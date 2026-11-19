@@ -64,7 +64,7 @@ def embed(products):
     """products: DataFrame with SKU, IMAGE_URL (+ attributes for fake mode) -> (sku list, float32 matrix)."""
     cache = load_cache()
     fake = FAKE
-    want = {r.SKU: (r.IMAGE_URL or "") for r in products.itertuples()}
+    want = {r.SKU: C.txt(r.IMAGE_URL) for r in products.itertuples()}
     todo = [s for s, u in want.items() if u and (s not in cache or cache[s][0] != u)]
     if C.EMBED_LIMIT:
         todo = todo[:C.EMBED_LIMIT]

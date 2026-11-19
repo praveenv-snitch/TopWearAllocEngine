@@ -104,10 +104,15 @@ SH_DESIGN_MAP = {"SOLID": "Solid", "STRIPES": "Stripes", "TEXTURED": "Self Desig
 TS_COLLAR_MAP = {"POLO": "Polo", "ROUND": "Round", "V NECK": "Round", "CREW": "Round"}   # everything else -> Others
 
 
+def txt(v):
+    """Snowflake NULL arrives as None or NaN depending on the pandas version -> always a str."""
+    return v if isinstance(v, str) else ""
+
+
 def design_bucket(category, designs, style):
-    d = (designs or "").strip().upper()
+    d = txt(designs).strip().upper()
     if category == "SHIRTS":
-        s = (style or "").upper()
+        s = txt(style).upper()
         if "LINEN" in s:
             return "Linen"
         if "LUXE" in s:
@@ -120,7 +125,7 @@ def mix_key(category, collar, designs, style):
     """Key matching GS_T_SHIRTS_IDEAL_MIX (collar|designs) / GS_SHIRTS_IDEAL_MIX (designs)."""
     db = design_bucket(category, designs, style)
     if category == "T-SHIRTS":
-        return TS_COLLAR_MAP.get((collar or "").strip().upper(), "Others") + " | " + db
+        return TS_COLLAR_MAP.get(txt(collar).strip().upper(), "Others") + " | " + db
     return db
 
 

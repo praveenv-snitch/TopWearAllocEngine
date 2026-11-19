@@ -42,7 +42,9 @@ def _d(v):
 def _arr(v):
     if isinstance(v, str):
         v = json.loads(v)
-    return [_i(x) for x in (v or [0] * 10)][:10]
+    if not isinstance(v, (list, tuple, np.ndarray)):      # NULL -> None / NaN
+        v = [0] * 10
+    return [_i(x) for x in v][:10]
 
 
 def _numeric(d):

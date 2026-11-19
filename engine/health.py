@@ -24,7 +24,9 @@ TOP_COLOURS = 14
 def _arr(v):
     if isinstance(v, str):
         v = json.loads(v)
-    return np.array([float(x or 0) for x in (v or [0] * 10)][:10], np.float32)
+    if not isinstance(v, (list, tuple, np.ndarray)):      # NULL -> None / NaN
+        v = [0] * 10
+    return np.array([_f(x) for x in v][:10], np.float32)
 
 
 def colour_name(c):
