@@ -1,0 +1,30 @@
+// Headless smoke test: load the built dashboard, exercise all three tabs, print key outputs / errors.
+const {JSDOM, VirtualConsole} = require('jsdom');
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const vc = new VirtualConsole(); const errs = [];
+vc.on('jsdomError', e => errs.push(e.message)); vc.on('error', e => errs.push(String(e)));
+const t0 = Date.now();
+const dom = new JSDOM(html, {runScripts: 'dangerously', virtualConsole: vc, pretendToBeVisual: true,
+  beforeParse(w) { w.URL.createObjectURL = () => 'blob:x'; w.URL.revokeObjectURL = () => {}; w.HTMLElement.prototype.scrollIntoView = () => {}; }});
+const w = dom.window, d = w.document, $ = id => d.getElementById(id);
+console.log('load ms', Date.now() - t0, '| errors', errs);
+const sku = process.argv[3] || w.eval("K.find(k=>k[32]>=0&&k[18]+k[19]>100)[0]");
+w.eval(`showSku(${JSON.stringify(sku)})`);
+const txt = el => el ? el.textContent.replace(/\s+/g, ' ').trim() : '(missing)';
+console.log('\n[TAB1]', sku, txt(d.querySelector('#simOut .card')).slice(0, 400));
+console.log('neighbours:', d.querySelectorAll('#simOut .nb').length);
+console.log('insights:', txt(d.querySelectorAll('#simOut .card')[2]).slice(0, 500));
+console.log('cluster sum:', txt($('pClusSum')).slice(0, 400));
+const rows = [...d.querySelectorAll('#pTbl tbody tr')].slice(0, 6).map(r => [...r.cells].map(c => c.textContent.trim()).join(' | '));
+console.log('placement rows:', d.querySelectorAll('#pTbl tbody tr').length); rows.forEach(r => console.log('  ', r));
+console.log('\n[TAB2] health rows:', d.querySelectorAll('#healthTbl tbody tr').length);
+console.log('  ', [...d.querySelector('#healthTbl tbody tr').cells].map(c => c.textContent.trim()).join(' | '));
+w.eval('storeDetail(0)'); console.log('detail:', txt($('storeDetail')).slice(0, 600));
+let t = Date.now(); $('aRun').click();
+console.log('alloc ms', Date.now() - t, '|', txt($('allocSum')));
+[...d.querySelectorAll('#allocTbl tbody tr')].slice(0, 5).forEach(r => console.log('  ', [...r.cells].map(c => c.textContent.trim()).join(' | ')));
+$('aCsv').click(); console.log('csv lines', w.eval('LAST.length'));
+console.log('\n[TAB3]', txt(d.querySelector('#nudgeOut h2')), '| alerts', d.querySelectorAll('#nudgeOut .card')[1].querySelectorAll('tbody tr').length);
+[...d.querySelectorAll('#nudgeOut tbody tr')].slice(0, 3).forEach(r => console.log('  ', [...r.cells].map(c => c.textContent.trim()).join(' | ')));
+console.log('\nerrors total:', errs.length, errs.slice(0, 5));

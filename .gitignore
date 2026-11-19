@@ -1,0 +1,11 @@
+.cache/
+index.html
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+node_modules/
+worker/.wrangler/
+*.p8
+*.pem

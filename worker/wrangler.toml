@@ -1,0 +1,19 @@
+name = "topwearalloc"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+# KV namespace the build writes index.html into. Leave the placeholder: the workflow fills it from CF_KV_NAMESPACE_ID.
+[[kv_namespaces]]
+binding = "TW"
+id = "__KV_NAMESPACE_ID__"
+
+# Custom domain (optional; zone must be on this Cloudflare account):
+# routes = [{ pattern = "topwear.snitch-offline.com", custom_domain = true }]
+
+# On-time refresh (UTC): 04:30 = 10:00 IST. The Worker starts the GitHub workflow.
+[triggers]
+crons = ["30 4 * * *"]
+
+[vars]
+GH_REPO = "__GH_REPO__"   # filled by the workflow; GH_TOKEN is a Worker secret

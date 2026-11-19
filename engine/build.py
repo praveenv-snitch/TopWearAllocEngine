@@ -1,0 +1,229 @@
+"""TopWear Allocation Engine build:  Snowflake -> embeddings -> similarity -> demand -> store health -> index.html -> KV.
+
+    python -m engine.build                 # full run (GitHub Actions)
+    TW_DEV_DATA=.cache/dev/data.pkl ...    # reuse a pickled Snowflake pull (development)
+"""
+import base64
+import json
+import os
+import pickle
+import time
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytz
+
+from engine import config as C, demand, embeddings, health, similarity
+
+DATASETS = ["products", "store_sku", "stores", "ideal_mix", "size_sales", "b2b"]
+TEMPLATE = Path(__file__).resolve().parent.parent / "web" / "template.html"
+IMG_PREFIX = "https://cdn.shopify.com/s/files/1/0420/7073/7058/files/"
+
+
+def _s(v):
+    return "" if v is None or (isinstance(v, float) and np.isnan(v)) or str(v) in ("None", "nan", "NaT") else str(v)
+
+
+def _i(v):
+    try:
+        return 0 if v is None or pd.isna(v) else int(round(float(v)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _d(v):
+    """date -> 'YYYY-MM-DD' or ''."""
+    t = pd.to_datetime(v, errors="coerce")
+    return "" if pd.isna(t) else t.strftime("%Y-%m-%d")
+
+
+def _arr(v):
+    if isinstance(v, str):
+        v = json.loads(v)
+    return [_i(x) for x in (v or [0] * 10)][:10]
+
+
+def _numeric(d):
+    """Snowflake NUMBER columns can arrive as decimal.Decimal objects -> float."""
+    from decimal import Decimal
+    for df in d.values():
+        for c in df.columns:
+            if df[c].dtype == object and df[c].map(lambda v: isinstance(v, Decimal)).any():
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+    return d
+
+
+def load():
+    dev = os.environ.get("TW_DEV_DATA")
+    if dev and os.path.exists(dev):
+        print("Using cached Snowflake pull", dev)
+        return _numeric(pickle.load(open(dev, "rb")))
+    from engine.snowflake_io import fetch_all
+    print("Fetching from Snowflake...")
+    d = fetch_all(DATASETS)
+    if dev:
+        os.makedirs(os.path.dirname(dev), exist_ok=True)
+        pickle.dump(d, open(dev, "wb"))
+    return _numeric(d)
+
+
+def prepare_products(p):
+    p = p.drop_duplicates("SKU").reset_index(drop=True)
+    p["MIX_KEY"] = [C.mix_key(c, co, de, st) for c, co, de, st in zip(p["CATEGORY"], p["COLLAR_NEW"], p["DESIGNS"], p["STYLE"])]
+    p["COLOUR"] = p["COLOR"].map(health.colour_name)
+    p["PRICE_BAND"] = p["MRP"].map(lambda m: C.price_band(float(m or 0)))
+    today = pd.Timestamp.today().normalize()
+    first = pd.to_datetime(p["FIRST_OFFLINE_SALE"], errors="coerce")
+    p["AGE_TAG"] = np.where(p["OFFLINE_UNITS"] <= 0, 0,
+                            np.where((today - first).dt.days <= C.NEW_SKU_DAYS, 1, 2))   # 0 new, 1 recent, 2 old
+    return p
+
+
+def main():
+    t0 = time.time()
+    d = load()
+    prods = prepare_products(d["products"])
+    store_sku, stores = d["store_sku"], d["stores"]
+    stores = stores[stores["CATEGORY"].isin(C.CATEGORIES)
+                    & ~stores["STORE_NAME"].fillna("").str.upper().str.contains("WAREHOUSE|TEST|DUMMY")].reset_index(drop=True)
+    print("products %d | store-sku %d | stores %d" % (len(prods), len(store_sku), stores["BC"].nunique()))
+
+    print("Embedding images...")
+    emb_skus, vecs = embeddings.embed(prods)
+    print("Similarity search...")
+    nbrs, calib = similarity.search(prods, emb_skus, vecs)
+
+    print("Store health...")
+    hl, palette = health.build(stores, store_sku, prods, d["ideal_mix"], d["size_sales"])
+
+    # ---- index tables
+    store_rows = stores.drop_duplicates("BC").sort_values("BC").reset_index(drop=True)
+    st_bc = [int(b) for b in store_rows["BC"]]
+    st_idx = {b: i for i, b in enumerate(st_bc)}
+    name_to_si = {str(n).upper().strip(): i for i, n in enumerate(store_rows["STORE_NAME"])}
+    cats = list(C.CATEGORIES)
+    ci = {c: i for i, c in enumerate(cats)}
+    sku_list = prods["SKU"].tolist()
+    ki = {s: i for i, s in enumerate(sku_list)}
+
+    # ---- demand projection targets: WH stock, never sold offline, or recently inwarded
+    wh_tot = prods["WH_N"].fillna(0) + prods["WH_S"].fillna(0)
+    recent_inw = pd.to_datetime(prods["WH_LIVE_DATE"], errors="coerce") >= pd.Timestamp.today() - pd.Timedelta(days=60)
+    tmask = ((wh_tot > 0) | (prods["AGE_TAG"] == 0) | recent_inw) & prods["SKU"].isin(nbrs)
+    targets = prods.loc[tmask, "SKU"].tolist()
+    print("Demand projection for %d SKUs x %d stores..." % (len(targets), len(st_bc)))
+    proj, evid, _, _ = demand.build(prods, store_sku, st_bc, nbrs, targets,
+                                 dict(zip(store_rows["BC"].astype(int), store_rows["CLUSTER"])))
+    proj_row = {s: i for i, s in enumerate(targets)}
+    # evidence -> 2 bits: 0 none, 1 = 1-2 neighbours, 2 = 3+ neighbours, 3 = own history
+    ev = np.where(evid >= 100, 3, np.where(evid >= 3, 2, np.where(evid >= 1, 1, 0))).astype(np.uint8)
+    ev = np.pad(ev, ((0, 0), (0, (-ev.shape[1]) % 4)))
+    ev_packed = (ev[:, 0::4] | (ev[:, 1::4] << 2) | (ev[:, 2::4] << 4) | (ev[:, 3::4] << 6)).astype(np.uint8)
+
+    # ---- in-transit from B2B (store name -> index)
+    b2b = d["b2b"]
+    transit = {}
+    sent = {}
+    for r in b2b.itertuples():
+        si = name_to_si.get(str(r.STORE).upper().strip())
+        if si is None or r.SKU not in ki:
+            continue
+        if r.IN_TRANSIT:
+            transit[(si, ki[r.SKU])] = _i(r.IN_TRANSIT)
+        sent.setdefault(r.SKU, set()).add(si)
+
+    # ---- payload
+    mix_keys = {c: sorted(set(prods.loc[prods["CATEGORY"] == c, "MIX_KEY"]) |
+                          {k for (bc, cc), h in hl.items() if cc == c for k in h["mix"]}) for c in cats}
+    bands = [b[2] for b in C.PRICE_BANDS]
+    soft = C.SIM["soft_attrs"]
+    words = {}                                   # string dictionary: repeated attribute values -> ints
+
+    def w(v):
+        v = _s(v)
+        if v not in words:
+            words[v] = len(words)
+        return words[v]
+
+    skus = []
+    for r in prods.itertuples():
+        img = _s(r.IMAGE_URL)
+        cogs, mrp = float(r.COGS or 0) if r.COGS == r.COGS else 0, float(r.MRP or 0) if r.MRP == r.MRP else 0
+        skus.append([
+            r.SKU, ci[r.CATEGORY], _s(r.PRODUCT_NAME), img[len(IMG_PREFIX):] if img.startswith(IMG_PREFIX) else img,
+            w(r.COLLAR_NEW), w(r.FIT), w(r.MATERIAL_NEW), w(r.SLEEVE_TYPE), w(r.DESIGNS), w(r.PRINT_DESIGN),
+            w(r.COLOUR), w(r.STYLE), w(r.OCCASSION_NEW),
+            _i(mrp), _i(r.SELLING_PRICE), _i(mrp - cogs) if cogs else -1,
+            _d(r.FINAL_LIVE_DATE), _s(r.STATUS)[:1],
+            _i(r.WH_N), _i(r.WH_S), _arr(r.WH_N_SZ), _arr(r.WH_S_SZ),
+            int(r.AGE_TAG), _i(r.OFFLINE_UNITS), _i(r.OFFLINE_STORES),
+            round(float(r.OFFLINE_RETURNS) / r.OFFLINE_UNITS, 3) if r.OFFLINE_UNITS else 0,
+            round(float(r.ONLINE_ROS or 0), 2), w(r.MIX_KEY), w(r.PRICE_BAND),
+            _d(r.WH_LIVE_DATE) or _d(r.FIRST_WH_INWARD), 1 if _s(r.OFFLINE_ALLOCATED_STATUS) == "Offline Allocated" else 0,
+            _d(r.FIRST_OFFLINE_SALE), proj_row.get(r.SKU, -1), len(sent.get(r.SKU, ())),
+            w(r.CLOSURE), w(r.POCKET), w(r.SKU_CLASS)])
+
+    nb_out = []
+    for s in sku_list:
+        row = []
+        for (cs, final, vis, tier, boost, matched, obv, dm, pm) in nbrs.get(s, [])[:C.SIM["top_k"]]:
+            mask = sum(1 << soft.index(a) for a in matched)
+            row += [ki[cs], int(round(vis * 1000)), int(round(boost * 1000)),
+                    tier | (obv << 3) | (dm << 4) | (pm << 5) | (mask << 6)]
+        nb_out.append(row)
+
+    stock = []          # current store stock of in-scope SKUs
+    ss = store_sku[(store_sku["INV"] + store_sku["JIT"] > 0) & store_sku["BC"].isin(st_idx) & store_sku["SKU"].isin(ki)]
+    for r in ss.itertuples():
+        si, k = st_idx[int(r.BC)], ki[r.SKU]
+        stock.append([si, k, _i(r.INV + r.JIT), _i(r.L30), _i(r.ROS * 1000), _i(r.AGE_DAYS), int(r.IS_CUT),
+                      transit.get((si, k), 0), _i(r.LAST_SALE_DAYS) if r.LAST_SALE_DAYS == r.LAST_SALE_DAYS else -1])
+
+    store_out, health_out = [], []
+    for i, r in store_rows.iterrows():
+        store_out.append([int(r.BC), _s(r.STORE_NAME), _s(r.STORE_TYPE), _s(r.STATE), _s(r.CITY),
+                          _s(r.ZONE) or "UNMAPPED", _s(r.CLUSTER) or "UNMAPPED", _s(r.CITY_CLUSTER),
+                          _i(r.CARPET_AREA), _i(r.BASE_STOCK), _i(r.MAX_DOI), _i(r.APPAREL_INV)])
+        health_out.append([hl.get((int(r.BC), c)) for c in cats])
+
+    payload = {
+        "built": datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%d %b %Y, %I:%M %p IST"),
+        "fake": embeddings.FAKE, "imgPrefix": IMG_PREFIX, "cats": cats, "sizes": C.SIZES, "soft": soft,
+        "tierTag": C.SIM["tier_tag"], "tierMult": C.SIM["tier_mult"], "damp": C.SIM["soft_boost_damping"],
+        "calib": calib, "mixKeys": mix_keys, "palette": palette, "bands": bands,
+        "weights": C.ALLOC_DEFAULT_WEIGHTS, "alloc": C.ALLOC, "rosMax": demand.ROS_MAX,
+        "newDays": C.NEW_SKU_DAYS, "nudgeDays": C.NUDGE_DAYS, "freshDays": C.FRESH_DAYS,
+        "words": list(words), "stores": store_out, "health": health_out, "skus": skus, "nb": nb_out, "stock": stock,
+        "nStores": len(st_bc),
+        "proj": base64.b64encode(demand.pack_uint8(proj)).decode(),
+        "evid": base64.b64encode(ev_packed.tobytes()).decode(), "evidW": int(ev_packed.shape[1]),
+    }
+    data_json = json.dumps(payload, separators=(",", ":"), default=lambda o: o.item() if hasattr(o, "item") else str(o))
+    html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", data_json.replace("</", "<\\/"))
+    with open(C.OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write(html)
+    print("Built %s (%.1f MB) in %.0fs" % (C.OUTPUT_FILE, len(html) / 1e6, time.time() - t0))
+    publish(html)
+
+
+def publish(html):
+    if not (C.CF_ACCOUNT_ID and C.CF_API_TOKEN and C.CF_KV_NAMESPACE_ID):
+        print("KV publish skipped (CF_* not set) - %s is a static file you can open/host anywhere" % C.OUTPUT_FILE)
+        return
+    if embeddings.FAKE:
+        raise SystemExit("Refusing to publish: TW_FAKE_EMBED=1 builds use test vectors, not image similarity")
+    import requests
+    url = ("https://api.cloudflare.com/client/v4/accounts/%s/storage/kv/namespaces/%s/values/%s"
+           % (C.CF_ACCOUNT_ID.strip(), C.CF_KV_NAMESPACE_ID.strip(), C.KV_KEY))
+    resp = requests.put(url, data=html.encode("utf-8"), timeout=180,
+                        headers={"Authorization": "Bearer " + C.CF_API_TOKEN.strip(),
+                                 "Content-Type": "text/html; charset=utf-8"})
+    if resp.status_code != 200 or not resp.json().get("success"):
+        raise SystemExit("KV publish failed (%s): %s" % (resp.status_code, resp.text[:500]))
+    print("[OK] published to Workers KV - live now")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,168 @@
+name: TopWear refresh
+
+on:
+  schedule:
+    # Backup only. The on-time 10:00 IST run comes from the Cloudflare Worker cron (worker/wrangler.toml), because
+    # GitHub's scheduler is often 10-60 min late. If the Worker already ran this slot, this run skips itself.
+    - cron: "30 4 * * *"        # 10:00 IST (cron is UTC)
+  workflow_dispatch:
+    inputs:
+      refresh_only:
+        description: "Data refresh only (skip Worker deploy)"
+        type: boolean
+        default: false
+      backtest:
+        description: "Also run the leave-one-out demand backtest (results in the run summary)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["engine/**", "web/**", "requirements.txt", "worker/**", ".github/workflows/refresh.yml"]
+
+concurrency:
+  group: topwear-refresh
+  cancel-in-progress: false
+
+env:
+  SNOW_ACCOUNT: ${{ secrets.SNOW_ACCOUNT }}
+  SNOW_USER: ${{ secrets.SNOW_USER }}
+  SNOW_PRIVATE_KEY: ${{ secrets.SNOW_PRIVATE_KEY }}
+  SNOW_KEY_PASSPHRASE: ${{ secrets.SNOW_KEY_PASSPHRASE }}
+  SNOW_ROLE: ${{ secrets.SNOW_ROLE }}
+  SNOW_WH: ${{ secrets.SNOW_WH }}
+  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+  CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+  CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+  CACHE_TAG: embeddings-cache   # GitHub Release that holds .cache/embeddings.npz between runs
+
+permissions:
+  contents: write               # upload the embedding cache release asset
+  actions: read                 # backup-cron guard lists recent runs
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.guard.outputs.skip }}
+    steps:
+      - name: Skip backup cron if this slot already ran
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          skip=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            since=$(date -u -d '-100 min' +%Y-%m-%dT%H:%M:%SZ)
+            n=$(gh api "repos/${{ github.repository }}/actions/workflows/refresh.yml/runs?created=>$since&per_page=20" \
+                 --jq '[.workflow_runs[] | select(.id != ${{ github.run_id }} and .event != "schedule" and .conclusion != "failure" and .conclusion != "cancelled")] | length')
+            [ "${n:-0}" -gt 0 ] && skip=true
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"; echo "skip=$skip"
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -q cryptography
+      - name: Check secrets, token, KV namespace, Snowflake key
+        shell: python
+        run: |
+          import os, json, base64, urllib.request, urllib.error, re
+          E = os.environ.get
+          errs = []
+          def api(path):
+              req = urllib.request.Request("https://api.cloudflare.com/client/v4" + path,
+                                           headers={"Authorization": "Bearer " + E("CF_API_TOKEN", "").strip()})
+              try:
+                  return json.load(urllib.request.urlopen(req, timeout=30))
+              except urllib.error.HTTPError as e:
+                  try: return json.load(e)
+                  except Exception: return {"success": False, "errors": [{"message": "HTTP %s" % e.code}]}
+              except Exception as e:
+                  return {"success": False, "errors": [{"message": str(e)}]}
+          acc, tok, ns = (E("CF_ACCOUNT_ID") or "").strip(), (E("CF_API_TOKEN") or "").strip(), (E("CF_KV_NAMESPACE_ID") or "").strip()
+          if not tok: errs.append("Secret CF_API_TOKEN is missing")
+          if not re.fullmatch(r"[0-9a-f]{32}", acc): errs.append("Secret CF_ACCOUNT_ID must be the 32-char hex account id")
+          if not re.fullmatch(r"[0-9a-f]{32}", ns):  errs.append("Secret CF_KV_NAMESPACE_ID must be the 32-char hex KV namespace id")
+          if tok and acc and not errs:
+              v = api("/user/tokens/verify")
+              if not v.get("success"): v = api("/accounts/%s/tokens/verify" % acc)
+              print("Cloudflare token:", "OK" if v.get("success") else "FAILED")
+              if not v.get("success"): errs.append("CF_API_TOKEN rejected: %s" % v.get("errors"))
+              else:
+                  k = api("/accounts/%s/storage/kv/namespaces/%s" % (acc, ns))
+                  print("KV namespace:", k.get("result", {}).get("title") if k.get("success") else "NOT FOUND")
+                  if not k.get("success"):
+                      errs.append("KV namespace %s not found / token lacks 'Workers KV Storage: Edit': %s" % (ns, k.get("errors")))
+          user, key = (E("SNOW_USER") or "").strip(), E("SNOW_PRIVATE_KEY") or ""
+          if not user: errs.append("Secret SNOW_USER is missing")
+          if not key.strip(): errs.append("Secret SNOW_PRIVATE_KEY is missing")
+          else:
+              from cryptography.hazmat.primitives import serialization
+              try:
+                  pem = key.encode() if "-----BEGIN" in key else base64.b64decode(key)
+                  pw = E("SNOW_KEY_PASSPHRASE") or None
+                  serialization.load_pem_private_key(pem, password=pw.encode() if pw else None)
+                  print("Snowflake private key: OK")
+              except TypeError as e:
+                  errs.append("SNOW_PRIVATE_KEY: passphrase problem (%s) - set/clear SNOW_KEY_PASSPHRASE" % e)
+              except Exception as e:
+                  errs.append("SNOW_PRIVATE_KEY is not a valid PEM private key: %s" % e)
+          for e in errs: print("::error::" + e)
+          if errs: raise SystemExit("%d problem(s) - fix the secrets above and re-run" % len(errs))
+          print("All checks passed")
+
+  deploy-worker:
+    needs: [preflight]
+    if: github.event_name != 'schedule' && inputs.refresh_only != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Fill KV namespace id + repo
+        run: |
+          id="${CF_KV_NAMESPACE_ID//[[:space:]]/}"
+          sed -i -E "s/__KV_NAMESPACE_ID__/$id/" worker/wrangler.toml
+          sed -i "s#__GH_REPO__#${{ github.repository }}#" worker/wrangler.toml
+      - name: Deploy Worker
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: npx -y wrangler@4 deploy
+
+  refresh-data:
+    needs: [preflight, deploy-worker]
+    if: always() && needs.preflight.result == 'success' && needs.preflight.outputs.skip != 'true' && needs.deploy-worker.result != 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300          # first run embeds ~18k images (~1-2 h on CPU); daily runs take a few minutes
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements.txt
+      - name: Cache Hugging Face model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-marqo-fashionsiglip-v1
+      - name: Restore embedding cache
+        run: |
+          mkdir -p .cache
+          gh release download "$CACHE_TAG" -p embeddings.npz -D .cache --clobber \
+            && echo "cache restored: $(du -h .cache/embeddings.npz | cut -f1)" \
+            || echo "no embedding cache yet - this run embeds every SKU image (first run is slow)"
+      - name: Build + publish
+        run: python -m engine.build
+      - name: Backtest
+        if: inputs.backtest == true
+        run: |
+          python -m engine.backtest | tee backtest.txt
+          { echo '### Demand backtest'; echo '```'; tail -1 backtest.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save embedding cache
+        if: always()
+        run: |
+          [ -f .cache/embeddings.npz ] || { echo "no cache file"; exit 0; }
+          gh release view "$CACHE_TAG" >/dev/null 2>&1 || \
+            gh release create "$CACHE_TAG" --title "Embedding cache (auto)" --notes "Image embeddings reused between refreshes. Do not delete." --latest=false
+          gh release upload "$CACHE_TAG" .cache/embeddings.npz --clobber

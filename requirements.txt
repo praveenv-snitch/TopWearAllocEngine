@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+pandas
+numpy
+pytz
+requests
+cryptography
+snowflake-connector-python[pandas]
+pillow
+torch
+open_clip_torch
