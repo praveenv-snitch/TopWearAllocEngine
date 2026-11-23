@@ -167,7 +167,18 @@ DOI_CAP_STATES = {"KARNATAKA", "DELHI", "HARYANA"}  # WH states: 60 days cap, el
 ALLOC_DEFAULT_WEIGHTS = {"ros": 0.30, "str": 0.15, "mix_gap": 0.15, "option_gap": 0.10,
                          "fill_gap": 0.10, "fresh_need": 0.05, "target_gap": 0.05, "colour_gap": 0.05,
                          "price_gap": 0.05}
-ALLOC = {"days_cover": 30, "min_pack": 4, "max_per_store": 24,   # units per store-SKU
+# Size packs (units per size in the order of SIZES). Prepack ratios = prepack_ratio in store_replen_prepack*.sql.
+PACKS = {
+    "fresh_set": [1, 2, 3, 3, 2, 1, 0, 0, 0, 0],     # fresh loose: one 12-unit size set XS1 S2 M3 L3 XL2 XXL1
+    "fresh_set_plus": [0, 0, 0, 0, 0, 0, 1, 1, 1, 1],  # plus styles: 3XL-6XL
+    "prepack": {                                      # TOP depth -> units per size
+        "16": [1, 3, 4, 4, 3, 1, 0, 0, 0, 0], "12": [1, 2, 3, 3, 2, 1, 0, 0, 0, 0],
+        "11": [1, 2, 3, 3, 2, 0, 0, 0, 0, 0], "6": [0, 1, 2, 2, 1, 0, 0, 0, 0, 0],
+        "4": [0, 0, 0, 0, 0, 0, 1, 1, 1, 1]},
+    "fresh_prepacks": 2,                              # fresh: max 2 prepacks of a style per store
+    "replen_prepacks_max": 2,                         # replen: 1 or 2 whole packs, never split
+}
+ALLOC = {"days_cover": 30,           # days of projected sales a line should cover
          "fill_ceiling": 140}       # % of base stock x ideal category mix; network median fill is ~130% today
 
 
