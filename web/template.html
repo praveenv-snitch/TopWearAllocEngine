@@ -39,6 +39,34 @@ td.n,th.n{text-align:right}.scroll{overflow:auto;max-height:560px}
 .wt{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px}.wt label{display:flex;justify-content:space-between;gap:6px}.wt input{width:60px}
 .hint{color:var(--mut);font-size:12px}tr.click{cursor:pointer}tr.click:hover{background:#f5f8ff}
 .sz{font-family:ui-monospace,Menlo,monospace;font-size:11px}
+.topcard{position:relative}.badges{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;pointer-events:none}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;pointer-events:auto}
+.b-nrc{background:#fee2e2;color:#991b1b}.b-obv{background:#fef3c7;color:#92400e}.b-oth{background:#f1f5f9;color:#475569}
+.bar2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.recent{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.recent a{cursor:pointer}
+.simgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:10px}
+.sc{position:relative;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;overflow:hidden;display:flex;flex-direction:column}
+.sc:hover{border-color:var(--acc);box-shadow:0 2px 10px #1f5eff22}
+.sc .im{position:relative;height:230px;background:#eef0f4}.sc .im img{width:100%;height:100%;object-fit:cover}
+.sc .tl{position:absolute;top:8px;left:8px}.sc .tr{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+.sc .body{padding:8px 10px;display:flex;flex-direction:column;gap:5px}
+.sc .code{font-weight:700}.sc .nm{color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc .score{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--line);padding-top:5px}
+.sc .score b{font-size:15px}.sc .score span{color:var(--mut);font-size:11px}
+.mini{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}.mini div{background:#f8f9fb;border-radius:6px;padding:3px 5px}
+.mini b{display:block;font-size:12px}.mini span{font-size:10px;color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:3px}.chips .chip{font-size:10px;margin:0}
+.radio{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.radio label{padding:5px 10px;cursor:pointer;border-right:1px solid var(--line)}
+.radio label:last-child{border-right:0}.radio input{display:none}.radio label.on{background:var(--acc);color:#fff}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:10px 0}
+.flow .st{flex:1;min-width:170px;background:#f8f9fb;border:1px solid var(--line);border-radius:10px;padding:10px;position:relative}
+.flow .ar{display:flex;align-items:center;padding:0 6px;color:var(--mut);font-size:18px}
+.flow .st b{display:block;margin-bottom:4px}.flow .st .n{font-size:18px;font-weight:700;color:var(--acc)}
+details.ex{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 14px;margin-bottom:14px}details.ex summary{cursor:pointer;font-weight:650}
+.basket{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.basket .item{background:#eef2ff;border-radius:14px;padding:3px 6px 3px 10px;display:inline-flex;gap:6px;align-items:center}
+.basket .item button{border:0;background:#c7d2fe;border-radius:50%;width:18px;height:18px;cursor:pointer;line-height:18px;padding:0}
+th[title]{text-decoration:underline dotted;text-underline-offset:3px}
+.how{background:#f8f9fb;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}.how ol{margin:4px 0 0 18px;padding:0}
 </style></head><body>
 <header><h1>Snitch TopWear Allocation Engine</h1><span class="built" id="built"></span>
 <nav><button data-t="sim" class="on">SKU Similarity &amp; Placement</button><button data-t="alloc">Allocation Engine &amp; Store Health</button><button data-t="nudge">Nudges</button></nav></header>
@@ -47,26 +75,27 @@ td.n,th.n{text-align:right}.scroll{overflow:auto;max-height:560px}
 <!-- ================= TAB 1 ================= -->
 <section class="tab on" id="t-sim">
  <div class="card"><div class="filters">
+  <button class="b" id="skuBack" disabled>&larr; Back</button>
   <input id="skuIn" list="skuList" placeholder="Type or paste a SKU code, e.g. 4MSS4407-01" style="width:340px">
   <datalist id="skuList"></datalist><button class="b p" id="skuGo">Check</button>
-  <span class="hint">Shirts + T-shirts. Similarity is precomputed for every SKU, including new and draft ones.</span></div></div>
+  <span class="hint">Shirts + T-shirts (MP- SKUs excluded). Similarity is precomputed for every SKU, including new and draft ones.</span></div>
+  <div class="recent" id="recent"></div></div>
  <div id="simOut"></div>
 </section>
 <!-- ================= TAB 2 ================= -->
 <section class="tab" id="t-alloc">
  <div class="card"><div class="filters" id="f2"></div></div>
- <div class="card"><h2>Store health</h2><div class="hint">Click a store for mix, colour, price, size, cut and freshness detail. Fill = category stock ÷ (base stock × ideal category mix).</div>
+ <div class="card"><h2>Store health</h2><div class="hint">Click a store for mix, colour, price, size, cut and freshness detail. Fill = category stock ÷ (base stock × ideal category mix). Stores without a base stock or a mapped cluster are excluded.</div>
   <div class="scroll" id="healthTbl"></div></div>
  <div id="storeDetail"></div>
  <div class="card"><h2>Allocation run</h2>
-  <div class="hint">Allocates WH stock (preferred zone first, then the other zone) to the filtered stores. It ranks store × SKU pairs by the weighted score and caps each pair by projected demand, DOI and the store's fill room.</div>
-  <h3>Weights</h3><div class="wt" id="wts"></div>
+  <div class="hint">All WH-available SKUs that pass the filters × the filtered stores, with the same pack rules and gap logic as "Where to allocate".</div>
+  <details><summary class="mut" style="cursor:pointer">How the allocation works</summary><div id="howAlloc"></div></details>
+  <h3>Weights (hover for meaning)</h3><div class="wt" id="wts"></div>
   <div class="filters" style="margin-top:10px">
-   <label>Days of cover <input id="aCover" type="number" style="width:60px"></label>
-   <label>Min pack <input id="aMin" type="number" style="width:50px"></label>
-   <label>Max / store-SKU <input id="aMax" type="number" style="width:55px"></label>
-   <label>Fill ceiling % <input id="aFill" type="number" style="width:60px"></label>
-   <label><input id="aNewOnly" type="checkbox"> Only options the store doesn't carry</label>
+   <label title="Days of projected sales a line should cover">Days of cover <input id="aCover" type="number" style="width:60px"></label>
+   <label title="Max category stock after allocation, % of base stock × ideal category mix">Fill ceiling % <input id="aFill" type="number" style="width:60px"></label>
+   <label>Mode <select id="aMode"><option value="auto">Auto (fresh + replen)</option><option value="fresh">Fresh only</option><option value="replen">Replen only</option></select></label>
    <button class="b p" id="aRun">Run allocation</button><button class="b" id="aCsv" disabled>Download CSV</button>
   </div>
   <div id="allocSum" style="margin-top:10px"></div><div class="scroll" id="allocTbl"></div></div>
@@ -77,21 +106,34 @@ td.n,th.n{text-align:right}.scroll{overflow:auto;max-height:560px}
 <script>
 const D=__DATA__;
 // ---------------------------------------------------------------- decode
+// K[k]: 0 sku,1 cat,2 name,3 img,4 collar,5 fit,6 material,7 sleeve,8 designs,9 print,10 colour,11 style,12 occasion,
+// 13 mrp,14 sp,15 gp,16 live,17 status,18 whN,19 whS,20 whNsz,21 whSsz,22 age(0 new,1 recent,2 old),23 offline units (lifetime),
+// 24 offline stores,25 store return rate,26 online ros,27 mix key,28 band,29 wh inward,30 allocated,31 first offline sale,
+// 32 proj row,33 stores sent,34 closure,35 pocket,36 class,37 offline L30,38 offline L90,39 NRC,40 cut stores,
+// 41 WH loose size sets,42 prepack depth,43 prepacks N,44 prepacks S
 const W=D.words, S=D.stores, K=D.skus, NS=D.nStores, CATS=D.cats, SZ=D.sizes;
 const b64=s=>{const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
 const PROJ=b64(D.proj), EVID=b64(D.evid);
+const u16=s=>{const u=b64(s);return new Uint16Array(u.buffer,0,u.length>>1)};
+const NB={def:u16(D.nb),vis:u16(D.nbVis),meta:u16(D.nbMeta)};
 const idx={};K.forEach((k,i)=>idx[k[0]]=i);
-const STOCK={};for(const r of D.stock)STOCK[r[0]*K.length+r[1]]=r;
-const storeStock=Array.from({length:NS},()=>[]);D.stock.forEach(r=>storeStock[r[0]].push(r));
+// store stock rows: [si,k,stock,l30,ros*1000,age,cut,transit,lastSaleDays(-1 never),sizes[10] or 0]
+const STOCK={},storeStock=Array.from({length:NS},()=>[]);
+{const a=u16(D.stock),w=D.stockW;for(let o=0;o<a.length;o+=w){const sz=Array.from(a.subarray(o+9,o+19));
+ const r=[a[o],a[o+1],a[o+2],a[o+3],a[o+4],a[o+5],a[o+6],a[o+7],a[o+8]-1,sz.some(x=>x)?sz:0];STOCK[r[0]*K.length+r[1]]=r;storeStock[r[0]].push(r)}}
 const proj=(k,si)=>{const r=K[k][32];if(r<0)return 0;const q=PROJ[r*NS+si]/255;return q*q*D.rosMax};
 const evid=(k,si)=>{const r=K[k][32];if(r<0)return 0;return (EVID[r*D.evidW+(si>>2)]>>((si&3)*2))&3};
 const EVTXT=['baseline only','1-2 similar SKUs sold here','3+ similar SKUs sold here','own sales history'];
+const EVTIP=['No similar SKU has sold at this store for 30+ days, so the projection is this store\'s typical style ROS × how the similar SKUs perform elsewhere. Weakest evidence.',
+ '1-2 similar SKUs have 30+ days of sales history at this store.','3 or more similar SKUs have 30+ days of sales history at this store.','This SKU has its own sales history at this store (blended in).'];
 const zoneWh=z=>z==='NORTH'?0:z==='SOUTH'?1:-1;    // 0 North WH, 1 South WH, -1 best available
 const f0=x=>Math.round(x).toLocaleString('en-IN'), pc=x=>x<0?'–':(x*100).toFixed(0)+'%', f1=x=>(+x).toFixed(1), f2=x=>(+x).toFixed(2);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const img=k=>{const p=K[k][3];if(!p)return'';const u=p.startsWith('http')?p:D.imgPrefix+p;return u+(u.includes('?')?'&':'?')+'width=300'};
 const daysSince=d=>d?Math.floor((Date.now()-new Date(d+'T00:00:00'))/864e5):-1;
 const AGE=['NEW','RECENT','OLD'], AGEDESC=['never sold offline','first offline sale within '+D.newDays+' days','established offline history'];
+const PLUS_RE=/^(4MBG|4BRN|4BPL|4BTR|4BCH|4BJE|4BJK|4BSW|4BHD|4BOS|4BSHS|4BSFS|4BSH|4BBL|4BCA|4BSWT|4BCD|4BJO)/;
+const sum=a=>a.reduce((p,q)=>p+q,0);
 document.getElementById('built').textContent='Data as of '+D.built;
 if(D.fake)document.getElementById('fakeBanner').style.display='block';
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.tab').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('t-'+b.dataset.t).classList.add('on')});
@@ -99,91 +141,232 @@ function tabGo(t){document.querySelector(`nav button[data-t=${t}]`).click()}
 function sortable(el){el.querySelectorAll('th').forEach((th,ci)=>th.onclick=()=>{const tb=el.querySelector('tbody'),rows=[...tb.rows],asc=th.dataset.s!=='a';th.dataset.s=asc?'a':'d';
  rows.sort((a,b)=>{const x=a.cells[ci].dataset.v??a.cells[ci].textContent,y=b.cells[ci].dataset.v??b.cells[ci].textContent,nx=parseFloat(x),ny=parseFloat(y);
  const c=(!isNaN(nx)&&!isNaN(ny))?nx-ny:String(x).localeCompare(String(y));return asc?c:-c});rows.forEach(r=>tb.appendChild(r))})}
+const th=(label,tip,cls)=>`<th${cls?' class="'+cls+'"':''}${tip?' title="'+esc(tip)+'"':''}>${label}</th>`;
+function radio(name,opts,val){return `<span class="radio" data-r="${name}">${opts.map(([v,l,t])=>`<label class="${v===val?'on':''}"${t?' title="'+esc(t)+'"':''}><input type="radio" name="${name}" value="${v}"${v===val?' checked':''}>${l}</label>`).join('')}</span>`}
+function wireRadio(root,name,fn){root.querySelectorAll(`[data-r="${name}"] input`).forEach(i=>i.onchange=()=>{root.querySelectorAll(`[data-r="${name}"] label`).forEach(l=>l.classList.toggle('on',l.contains(i)&&i.checked));fn(i.value)})}
 
-// ---------------------------------------------------------------- scoring shared by Tab 1 and Tab 2
+// ---------------------------------------------------------------- store gaps + scoring (shared by placement and the bulk run)
 function storeFactors(si,k){
  const c=K[k][1],h=D.health[si][c];if(!h)return null;
  const mk=W[K[k][27]],col=W[K[k][10]],band=W[K[k][28]];
  const colKey=(D.palette[CATS[c]]||[]).includes(col)?col:'Other';
  const m=h.mix[mk]||[0,0],cl=h.col[colKey]||[0,0],bd=h.band[band]||[0,0];
  const tgt=h.target>0?h.actual/h.target:1;
- return {h,p:proj(k,si),ev:evid(k,si),mixGap:m[0]-m[1],mixIdeal:m[0],mixAct:m[1],colGap:cl[0]-cl[1],priceGap:bd[0]-bd[1],
-  optGap:h.idealOpts?(h.idealOpts-h.opts)/h.idealOpts:0,fillGap:h.fill<0?0:1-h.fill,freshNeed:1-h.fresh,targetGap:1-tgt,str:h.str,colKey};
+ return {h,c,p:proj(k,si),ev:evid(k,si),mk,colKey,band,mixGap:m[0]-m[1],colGap:cl[0]-cl[1],priceGap:bd[0]-bd[1],
+  optGap:h.idealOpts?(h.idealOpts-h.opts)/h.idealOpts:0,fillGap:h.fill<0?0:1-h.fill,freshNeed:1-h.fresh,targetGap:1-tgt,str:h.str};
 }
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
-function score(f,w,maxP,maxStr){
- const c={ros:maxP?f.p/maxP:0,str:maxStr?f.str/maxStr:0,mix_gap:clamp(f.mixGap*5,-1,1),option_gap:clamp(f.optGap,-1,1),
-  fill_gap:clamp(f.fillGap,-1,1),fresh_need:clamp(f.freshNeed,0,1),target_gap:clamp(f.targetGap,-1,1),colour_gap:clamp(f.colGap*5,-1,1),price_gap:clamp(f.priceGap*4,-1,1)};
- let s=0;for(const key in w)s+=(w[key]||0)*(c[key]||0);return {s,c};
-}
-function needQty(k,si,p,cfg){
- const st=STOCK[si*K.length+k],have=st?st[2]+st[7]:0,maxDoi=S[si][10]||90;
- let need=Math.ceil(p*cfg.cover)-have;need=Math.min(need,Math.floor(p*maxDoi)-have,cfg.max);
- if(need<=0)return {need:0,have};return {need:Math.max(need,cfg.min),have};
-}
-function sizeSplit(k,si,qty,whAvail){            // store size curve (fallback: WH availability) capped by WH size stock
- const c=K[k][1],h=D.health[si][c],curve=(h&&h.size[0].some(x=>x>0))?h.size[0]:whAvail.map(x=>x>0?1:0);
- const wts=curve.map((x,i)=>whAvail[i]>0?x:0),tot=wts.reduce((a,b)=>a+b,0);if(!tot)return null;
- const out=wts.map(x=>Math.floor(qty*x/tot));let left=qty-out.reduce((a,b)=>a+b,0);
- const order=wts.map((x,i)=>[x,i]).sort((a,b)=>b[0]-a[0]);
- for(let j=0;left>0&&j<order.length*4;j++){const i=order[j%order.length][1];if(wts[i]>0&&out[i]<whAvail[i]){out[i]++;left--}}
- for(let i=0;i<10;i++)out[i]=Math.min(out[i],whAvail[i]);return out;
-}
 const fillRoom=(si,c,ceil)=>{const h=D.health[si][c];return h&&h.base?Math.floor(h.base*ceil-h.stock):0};
 const szTxt=a=>a?a.map((x,i)=>x?SZ[i]+':'+x:'').filter(Boolean).join(' '):'';
 const weights=()=>{const w={};document.querySelectorAll('#wts input').forEach(i=>w[i.dataset.k]=+i.value||0);return w};
+const bandIdx=b=>D.bands.indexOf(b);
 
-// ---------------------------------------------------------------- TAB 1
+// Gap state per store x category, in UNITS, consumed as units are allocated (so 2 navy SKUs share one navy gap).
+//  meta / colour / price-band gap units = (benchmark share - actual stock share) x category base stock
+function newGapState(){return new Map()}
+function gapsOf(G,si,c,ceil){const key=si*2+c;let g=G.get(key);if(g)return g;const h=D.health[si][c];
+ g={room:fillRoom(si,c,ceil),opt:h?Math.max(h.idealOpts-h.opts,0):0,mix:{},col:{},band:{}};
+ if(h&&h.base){const B=h.base;for(const x in h.mix)g.mix[x]=(h.mix[x][0]-h.mix[x][1])*B;for(const x in h.col)g.col[x]=(h.col[x][0]-h.col[x][1])*B;
+  for(const x in h.band)g.band[x]=(h.band[x][0]-h.band[x][1])*B}
+ G.set(key,g);return g}
+
+// Pack builder: what one store x SKU line would be, given the remaining WH pools.
+//  FRESH  (store doesn't carry it):  prepack -> up to 2 whole packs;  loose -> one size set (XS1 S2 M3 L3 XL2 XXL1, plus: 3XL-6XL)
+//  REPLEN (store carries it):        prepack -> 1 or 2 whole packs;   loose -> only the sizes short of a full set / 30-day need
+//  Prepacks are used first when the zone has them; sizes the WH doesn't have are skipped, never substituted.
+function buildLine(k,si,type,pool,p,cfg){
+ const a=K[k],st=STOCK[si*K.length+k],plus=PLUS_RE.test(a[0]),depth=a[42],ratio=depth?D.packs.prepack[String(depth)]:null;
+ const pref=zoneWh(S[si][5]),order=pref<0?((sum(pool.loose[0])+pool.packs[0]*(depth||0))>=(sum(pool.loose[1])+pool.packs[1]*(depth||0))?[0,1]:[1,0]):[pref,1-pref];
+ const haveSz=st&&st[9]?st[9]:Array(10).fill(0),have=st?st[2]+st[7]:0;
+ for(const z of order){
+  // ---- prepacks first
+  if(ratio&&pool.packs[z]>0){
+   let n;
+   if(type==='FRESH')n=Math.min(D.packs.fresh_prepacks,pool.packs[z]);
+   else{const need=Math.max(Math.ceil(p*cfg.cover)-have,0);n=need>=depth*1.5?2:need>0||(st&&st[6])?1:0;n=Math.min(n,D.packs.replen_prepacks_max,pool.packs[z])}
+   if(n>0)return {z,fallback:pref>=0&&z!==pref,packType:'PREPACK',packs:n,depth,split:ratio.map(x=>x*n),units:n*depth};
+  }
+  // ---- loose
+  const L=pool.loose[z];if(!sum(L))continue;let split;
+  if(type==='FRESH'){const set=plus?D.packs.fresh_set_plus:D.packs.fresh_set;split=set.map((x,i)=>Math.min(x,L[i]));
+   // a fresh set must be complete in the core sizes: S M L XL in full (XS / XXL only if available); plus: 3 of 3XL-6XL
+   if(plus?[6,7,8,9].filter(i=>split[i]>=set[i]).length<3:[1,2,3,4].some(i=>split[i]<set[i]))continue}
+  else{const set=plus?D.packs.fresh_set_plus:D.packs.fresh_set,h=D.health[si][a[1]],curve=h&&h.size[0].some(x=>x>0)?h.size[0]:set.map(x=>x/sum(set));
+   const want=Math.ceil(p*cfg.cover);split=set.map((x,i)=>{const tgt=Math.max(x,Math.round(want*curve[i]));return Math.max(0,Math.min(tgt-haveSz[i],L[i]))});
+   if(!sum(split))continue}
+  return {z,fallback:pref>=0&&z!==pref,packType:'LOOSE',packs:0,depth:0,split,units:sum(split)};
+ }
+ return null;
+}
+
+// Value of a line = expected sell-through + share of each store gap it closes (weights from the Allocation tab).
+function lineValue(f,line,type,g,w,maxStr){
+ const u=line.units,sold=Math.min(u,f.p*D.alloc.days_cover);
+ const take=(v)=>v>0?Math.min(v,u)/u:0;
+ let price=take(g.band[f.band]);
+ if(price===0){const bi=bandIdx(f.band);for(const d of [-1,1]){const b=D.bands[bi+d];if(b&&g.band[b]>0)price=Math.max(price,0.5*take(g.band[b]))}}   // nearest price tier
+ const c={ros:sold/u,str:maxStr?f.str/maxStr:0,mix_gap:take(g.mix[f.mk]),colour_gap:take(g.col[f.colKey]),price_gap:price,
+  option_gap:type==='FRESH'&&g.opt>0?1:0,fill_gap:g.room>0?Math.min(g.room,u)/u:0,fresh_need:clamp(f.freshNeed,0,1),target_gap:clamp(f.targetGap,0,1)};
+ let s=0;for(const key in w)s+=(w[key]||0)*(c[key]||0);return {s,c,sold};
+}
+
+// Greedy allocator over (SKU, store) lines with lazy re-scoring: the best line is taken, its WH stock and store gaps are
+// consumed, and every other line is re-valued against the updated state before it can be taken.
+function allocate(ks,sts,mode,cfg,w){
+ const ceil=cfg.fill/100,G=newGapState(),pools=new Map(),out=[];
+ const poolOf=k=>{if(!pools.has(k)){const a=K[k];pools.set(k,{loose:[a[20].slice(),a[21].slice()],packs:[a[43],a[44]]})}return pools.get(k)};
+ let maxStr=0;for(const si of sts)for(const c of [0,1]){const h=D.health[si][c];if(h)maxStr=Math.max(maxStr,h.str)}
+ const cand=[];
+ for(const k of ks)for(const si of sts){
+  const f=storeFactors(si,k);if(!f)continue;const has=!!STOCK[si*K.length+k];
+  const type=mode==='fresh'?'FRESH':mode==='replen'?'REPLEN':(has?'REPLEN':'FRESH');
+  if(type==='FRESH'&&has)continue;if(type==='REPLEN'&&!has)continue;
+  if(f.p*cfg.cover<(type==='FRESH'?2:1))continue;          // not enough projected demand for this line
+  cand.push({k,si,f,type,has})}
+ const heap=[],push=x=>{heap.push(x);let i=heap.length-1;while(i){const p=(i-1)>>1;if(heap[p].v>=heap[i].v)break;[heap[p],heap[i]]=[heap[i],heap[p]];i=p}},
+  pop=()=>{const t=heap[0],l=heap.pop();if(heap.length){heap[0]=l;let i=0;for(;;){const a=2*i+1,b=a+1;let m=i;if(a<heap.length&&heap[a].v>heap[m].v)m=a;if(b<heap.length&&heap[b].v>heap[m].v)m=b;if(m===i)break;[heap[m],heap[i]]=[heap[i],heap[m]];i=m}}return t};
+ const evalC=x=>{const g=gapsOf(G,x.si,x.f.c,ceil);if(g.room<=0)return null;const line=buildLine(x.k,x.si,x.type,poolOf(x.k),x.f.p,cfg);if(!line)return null;
+  if(line.units>g.room){if(x.type==='FRESH'||line.packType==='PREPACK')return null;        // fresh sets and packs are never cut down
+   line.split=line.split.map(v=>Math.floor(v*g.room/line.units));line.units=sum(line.split);if(!line.units)return null}
+  const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0,maxDoi=S[x.si][10]||90;
+  if(x.f.p*maxDoi<0.5*(have+line.units)*(x.type==='FRESH'?0.5:1))return null;   // would sit far beyond the store's DOI cap
+  const val=lineValue(x.f,line,x.type,g,w,maxStr);return {line,val}};
+ for(const x of cand){const e=evalC(x);if(e){x.v=e.val.s;push(x)}}
+ while(heap.length){const x=pop(),e=evalC(x);if(!e)continue;
+  if(heap.length&&e.val.s<heap[0].v-1e-9){x.v=e.val.s;push(x);continue}          // stale: re-queue with its updated value
+  const {line,val}=e,pool=poolOf(x.k),g=gapsOf(G,x.si,x.f.c,ceil);
+  if(line.packType==='PREPACK')pool.packs[line.z]-=line.packs;else line.split.forEach((v,i)=>pool.loose[line.z][i]-=v);
+  const snap={room:g.room,mix:g.mix[x.f.mk]||0,col:g.col[x.f.colKey]||0,band:g.band[x.f.band]||0,opt:g.opt};
+  g.room-=line.units;if(g.mix[x.f.mk]!==undefined)g.mix[x.f.mk]-=line.units;if(g.col[x.f.colKey]!==undefined)g.col[x.f.colKey]-=line.units;
+  if(g.band[x.f.band]!==undefined)g.band[x.f.band]-=line.units;if(x.type==='FRESH')g.opt--;
+  const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0;
+  out.push({k:x.k,si:x.si,f:x.f,type:x.type,have,s:val.s,comp:val.c,sold:val.sold,gapBefore:snap,...line,
+   doiNow:x.f.p>0?have/x.f.p:-1,doiAfter:x.f.p>0?(have+line.units)/x.f.p:-1})}
+ return out;
+}
+const ALLOC_TIPS={store:'Store name (excluded: no base stock or unmapped cluster)',sku:'SKU group allocated',type:'FRESH = store does not carry the SKU; REPLEN = store carries it and needs sizes / depth',
+ pack:'PREPACK = sealed packs (never split, sent first if the zone has them); LOOSE = size-wise units',units:'Units allocated on this line',sizes:'Units per size on this line',
+ wh:'Warehouse zone the stock comes from: the store\'s own zone first; "fallback" = the other zone',
+ proj:'Projected rate of sale of THIS SKU at THIS store (units/day), from similar SKUs\' history',p30:'Projected sales in the next 30 days at this store (proj ROS × 30)',
+ ev:'How much history backs the projection at this store (hover a value for details)',have:'Units of this SKU at the store now, incl. JIT and in-transit (before allocation)',
+ score:'Weighted value of this line: expected sell-through + share of each store gap it closes. Higher = allocated first',
+ fill:'STORE fill rate for this CATEGORY before allocation = category stock incl. JIT ÷ (base stock × ideal category mix)',
+ str:'STORE sell-through for this CATEGORY, last 30 days (not the SKU)',
+ mix:'Metafield gap of the STORE for this SKU\'s bucket before allocation: ideal share − actual stock share (pp). Positive = store is short of this bucket',
+ col:'Colour gap of the STORE before allocation: cluster sales share of this colour − store stock share (pp). Positive = store is short of this colour',
+ price:'Price-band gap of the STORE before allocation: store sales share of this MRP band − stock share (pp). Positive = short of this price band',
+ doi:'Days of inventory of THIS SKU at THIS store = stock ÷ projected ROS. "now" = before, "after" = after this allocation',cap:'Store DOI cap: 60 days in KA / DL / HR (WH states), 90 elsewhere'};
+function allocTable(out,limit){
+ const shown=out.slice(0,limit||2000);
+ return `<table><thead><tr>${th('Store',ALLOC_TIPS.store)}${th('Cluster')}${th('SKU',ALLOC_TIPS.sku)}${th('Colour')}${th('MRP','','n')}${th('Type',ALLOC_TIPS.type)}${th('Pack',ALLOC_TIPS.pack)}
+ ${th('Units',ALLOC_TIPS.units,'n')}${th('Sizes',ALLOC_TIPS.sizes)}${th('WH',ALLOC_TIPS.wh)}${th('Score',ALLOC_TIPS.score,'n')}${th('Proj ROS',ALLOC_TIPS.proj,'n')}${th('Proj 30d',ALLOC_TIPS.p30,'n')}
+ ${th('Evidence',ALLOC_TIPS.ev)}${th('Have',ALLOC_TIPS.have,'n')}${th('DOI now → after',ALLOC_TIPS.doi,'n')}${th('DOI cap',ALLOC_TIPS.cap,'n')}${th('Store fill',ALLOC_TIPS.fill,'n')}${th('Store STR',ALLOC_TIPS.str,'n')}
+ ${th('Mix gap',ALLOC_TIPS.mix,'n')}${th('Colour gap',ALLOC_TIPS.col,'n')}${th('Price gap',ALLOC_TIPS.price,'n')}</tr></thead><tbody>${shown.map(r=>{const a=K[r.k],s=S[r.si],h=r.f.h;
+ return `<tr><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td><a href="#" onclick="showSku('${a[0]}');return false">${a[0]}</a></td><td>${esc(W[a[10]])}</td><td class="n">${f0(a[13])}</td>
+ <td>${r.type}</td><td>${r.packType==='PREPACK'?r.packs+' × PP'+r.depth:'loose'}</td><td class="n"><b>${r.units}</b></td><td class="sz">${szTxt(r.split)}</td>
+ <td>${r.z?'South':'North'}${r.fallback?' <span class="warn">(fallback)</span>':''}</td><td class="n">${f2(r.s)}</td><td class="n">${f2(r.f.p)}</td><td class="n">${f1(r.f.p*30)}</td>
+ <td class="mut" title="${esc(EVTIP[r.f.ev])}">${EVTXT[r.f.ev]}</td><td class="n">${r.have}</td><td class="n" data-v="${r.doiAfter}">${r.doiNow<0?'–':f0(r.doiNow)} → ${r.doiAfter<0?'–':f0(r.doiAfter)}</td><td class="n">${s[10]}</td>
+ <td class="n ${h.fill>1.4?'bad':h.fill<.85?'good':''}">${pc(h.fill)}</td><td class="n">${pc(h.str)}</td>
+ <td class="n ${r.f.mixGap>0?'good':''}" data-v="${r.f.mixGap}">${(r.f.mixGap*100).toFixed(1)}pp</td><td class="n ${r.f.colGap>0?'good':''}" data-v="${r.f.colGap}">${(r.f.colGap*100).toFixed(1)}pp</td>
+ <td class="n ${r.f.priceGap>0?'good':''}" data-v="${r.f.priceGap}">${(r.f.priceGap*100).toFixed(1)}pp</td></tr>`}).join('')}</tbody></table>`}
+function downloadAlloc(out,name){
+ const hdr=['BRANCH_CODE','STORE','CLUSTER','ZONE','SKU_GROUP','CATEGORY','PRODUCT_NAME','COLOUR','MRP','AGE_TAG','NRC','TYPE','PACK_TYPE','PREPACKS','PREPACK_DEPTH','UNITS',...SZ.map(z=>'QTY_'+z),
+  'WAREHOUSE','FALLBACK','SCORE','PROJ_ROS','PROJ_30D','EVIDENCE','STORE_STOCK_BEFORE','DOI_BEFORE','DOI_AFTER','STORE_FILL','STORE_STR','MIX_GAP_PP','COLOUR_GAP_PP','PRICE_GAP_PP'];
+ const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+ const lines=[hdr.join(',')].concat(out.map(r=>{const a=K[r.k],s=S[r.si];return [s[0],s[1],s[6],s[5],a[0],CATS[a[1]],a[2],W[a[10]],a[13],AGE[a[22]],a[39]?'Y':'',r.type,r.packType,r.packs,r.depth||'',r.units,...r.split,
+  r.z?'South':'North',r.fallback?'Y':'',r.s.toFixed(3),r.f.p.toFixed(3),(r.f.p*30).toFixed(1),EVTXT[r.f.ev],r.have,r.doiNow<0?'':r.doiNow.toFixed(0),r.doiAfter<0?'':r.doiAfter.toFixed(0),
+  (r.f.h.fill*100).toFixed(0),(r.f.h.str*100).toFixed(0),(r.f.mixGap*100).toFixed(1),(r.f.colGap*100).toFixed(1),(r.f.priceGap*100).toFixed(1)].map(q).join(',')}));
+ const blob=new Blob([lines.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
+ el.href=u;el.download=name+'_'+new Date().toISOString().slice(0,10)+'.csv';el.click();URL.revokeObjectURL(u);
+}
+const HOW_ALLOC=`<div class="how"><b>How the allocation works</b><ol>
+ <li><b>Projected demand.</b> For each store, this SKU's rate of sale is projected from the similar SKUs' sales at that store (weighted by similarity and recency), blended with the SKU's own history if it has one. "Evidence" tells you how much history backs it.</li>
+ <li><b>What can be sent (pack rules).</b> FRESH (store doesn't carry it): up to 2 prepacks, or one loose size set XS1 S2 M3 L3 XL2 XXL1 (12 units). S, M, L and XL must all be available in full; XS and XXL go if available. Plus styles: 3XL–6XL, at least 3 of the 4. REPLEN (store carries it): 1 or 2 whole prepacks, or only the loose sizes short of a full set / 30-day need. Prepacks go first; sizes the WH doesn't have are skipped.</li>
+ <li><b>Value of each store × SKU line.</b> Expected sell-through in ${D.alloc.days_cover} days + how much of the store's gaps the line closes: metafield bucket, colour, price band (the nearest band counts half), options and category fill room. Weights are set in the Allocation tab.</li>
+ <li><b>Greedy, best line first.</b> The highest-value line is taken; WH stock (by zone, size and pack) and that store's gaps are reduced, so a second navy SKU gets less credit for the same navy gap. Repeat until stock or gaps run out.</li>
+ <li><b>Hard limits.</b> Own-zone WH first, then the other zone (fallback); the store's category fill ceiling; no line that would sit far beyond the store's DOI cap.</li></ol></div>`;
+
+// ---------------------------------------------------------------- TAB 1: search, history, basket
 document.getElementById('skuList').innerHTML=K.map(k=>`<option value="${k[0]}">`).join('');
 const skuIn=document.getElementById('skuIn');
+const LS={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let RECENT=LS.get('tw_recent',[]).filter(s=>idx[s]!==undefined),BASKET=LS.get('tw_basket',[]).filter(s=>idx[s]!==undefined),HIST=[],CUR=null;
+let MATCH='def',PMODE='auto';
 document.getElementById('skuGo').onclick=()=>showSku(skuIn.value);
 skuIn.addEventListener('keydown',e=>{if(e.key==='Enter')showSku(skuIn.value)});
+document.getElementById('skuBack').onclick=()=>{if(HIST.length)showSku(HIST.pop(),true)};
+function renderRecent(){document.getElementById('recent').innerHTML=RECENT.length?`<span class="mut">Recent:</span>${RECENT.map(s=>`<a class="chip" onclick="showSku('${s}')">${s}</a>`).join('')}`:'';
+ document.getElementById('skuBack').disabled=!HIST.length;document.getElementById('skuBack').textContent=HIST.length?'← Back to '+HIST[HIST.length-1]:'← Back'}
+function addRecent(s){RECENT=[s,...RECENT.filter(x=>x!==s)].slice(0,5);LS.set('tw_recent',RECENT)}
+function basketToggle(s){BASKET=BASKET.includes(s)?BASKET.filter(x=>x!==s):[...BASKET,s];LS.set('tw_basket',BASKET);
+ const b=document.getElementById('addAlloc');if(b&&CUR!==null)b.outerHTML=addBtn(CUR);wireAdd();renderPlacement()}
+const addBtn=k=>`<button class="b ${BASKET.includes(K[k][0])?'':'p'}" id="addAlloc">${BASKET.includes(K[k][0])?'✓ In allocation (remove)':'+ Add to allocation'}</button>`;
+function wireAdd(){const b=document.getElementById('addAlloc');if(b)b.onclick=()=>basketToggle(K[CUR][0])}
 function attrs(k){const a=K[k];return [['Collar',W[a[4]]],['Fit',W[a[5]]],['Material',W[a[6]]],['Sleeve',W[a[7]]],['Designs',W[a[8]]],['Print',W[a[9]]],
  ['Colour',W[a[10]]],['Style',W[a[11]]],['Occasion',W[a[12]]],['Closure',W[a[34]]],['Pocket',W[a[35]]],['Class',W[a[36]]],['Mix bucket',W[a[27]]],['Price band',W[a[28]]]].filter(x=>x[1])}
-function showSku(code){
+const nrcTip=a=>`NRC = non-replenishable cut (brand level): cut at ${a[40]} store(s) AND the WH can build only ${a[41]} full loose size sets (fewer than 5).`;
+function neighbours(k,which){const A=NB[which],w=D.nbW,o=k*w*5,items=[];
+ for(let j=0;j<w;j++){const b=o+j*5;if(!A[b])continue;const code=A[b+3]|(A[b+4]<<16),x={k:A[b]-1,vis:A[b+1]/1000,boost:A[b+2]/1000,tier:code&7,obv:(code>>3)&1,dm:(code>>4)&1,pm:(code>>5)&1,mask:code>>6};
+  x.final=x.vis*D.tierMult[x.tier]*(1+D.damp*x.boost);items.push(x)}return items}
+function showSku(code,fromBack){
  code=(code||'').trim().toUpperCase();
  let k=idx[code];if(k===undefined&&code.split('-').length>2){code=code.replace(/-[^-]+$/,'');k=idx[code]}   // strip a size suffix
  const out=document.getElementById('simOut');
- if(k===undefined){out.innerHTML=`<div class="card bad">SKU <b>${esc(code)}</b> is not in the Shirts / T-shirts catalogue (METAFIELDS_DATA). Check the code: use the SKU group, without the size.</div>`;return}
- skuIn.value=K[k][0];tabGo('sim');
- const a=K[k],tag=a[22],cat=CATS[a[1]];
- const nb=D.nb[k],items=[];for(let i=0;i<nb.length;i+=4)items.push({k:nb[i],vis:nb[i+1]/1000,boost:nb[i+2]/1000,code:nb[i+3]});
- items.forEach(x=>{x.tier=x.code&7;x.obv=(x.code>>3)&1;x.dm=(x.code>>4)&1;x.pm=(x.code>>5)&1;x.mask=x.code>>6;
-  x.final=x.vis*D.tierMult[x.tier]*(1+D.damp*x.boost)});
- const whLive=a[29],inwDays=daysSince(whLive);
- let h=`<div class="card"><div class="q"><img src="${img(k)}" loading="lazy" onerror="this.style.visibility='hidden'"><div class="grow">
-  <div style="display:flex;gap:10px;align-items:center"><h2 style="margin:0">${esc(a[0])}</h2><span class="tag t${tag}">${AGE[tag]}</span><span class="mut">${AGEDESC[tag]}</span></div>
-  <div>${esc(a[2])} · ${cat} · status ${a[17]==='A'?'Active':a[17]==='D'?'Draft':esc(a[17])}${a[16]?' · live '+a[16]:''}${whLive?' · WH inward '+whLive+' ('+inwDays+'d ago)':''}</div>
+ if(k===undefined){out.innerHTML=`<div class="card bad">SKU <b>${esc(code)}</b> is not in the Shirts / T-shirts catalogue (METAFIELDS_DATA; MP- SKUs are excluded). Use the SKU group without the size.</div>`;return}
+ if(!fromBack&&CUR!==null&&CUR!==k)HIST.push(K[CUR][0]);CUR=k;
+ skuIn.value=K[k][0];tabGo('sim');addRecent(K[k][0]);renderRecent();
+ const a=K[k],tag=a[22],cat=CATS[a[1]],whLive=a[29],inwDays=daysSince(whLive),pp=a[42],ratio=pp?D.packs.prepack[String(pp)]:null;
+ out.innerHTML=`<div class="card topcard"><div class="q"><div style="position:relative"><img src="${img(k)}" loading="lazy" onerror="this.style.visibility='hidden'">
+   ${a[39]?`<span class="badge b-nrc" style="position:absolute;top:6px;left:6px" title="${esc(nrcTip(a))}">NRC</span>`:''}</div><div class="grow">
+  <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div style="display:flex;gap:10px;align-items:center"><h2 style="margin:0">${esc(a[0])}</h2>
+   ${a[39]?`<span class="badge b-nrc" title="${esc(nrcTip(a))}">NRC · cut at ${a[40]} stores</span>`:''}</div>
+   <div style="display:flex;gap:8px;align-items:center"><span class="tag t${tag}" title="${AGEDESC[tag]}">${AGE[tag]}</span>${addBtn(k)}</div></div>
+  <div>${esc(a[2])} · ${cat} · ${a[17]==='A'?'Active':a[17]==='D'?'Draft':esc(a[17])}${a[16]?' · live '+a[16]:''}${whLive?' · WH inward '+whLive+' ('+inwDays+'d ago)':''}</div>
   <div style="margin:6px 0">${attrs(k).map(x=>`<span class="chip">${x[0]}: <b>${esc(x[1])}</b></span>`).join('')}</div>
   <div class="kpi">
    <div><b>₹${f0(a[13])}</b><span>MRP (selling ₹${f0(a[14])})</span></div>
    <div><b>${a[15]<0?'–':'₹'+f0(a[15])}</b><span>GP (MRP − COGS)</span></div>
-   <div><b>${f0(a[18])}</b><span>WH North units</span></div><div><b>${f0(a[19])}</b><span>WH South units</span></div>
-   <div><b>${f0(a[23])}</b><span>offline units sold</span></div><div><b>${a[24]}</b><span>stores sold in</span></div>
-   <div><b>${pc(a[25])}</b><span>offline return rate</span></div><div><b>${f2(a[26])}</b><span>online ROS / day</span></div>
+   <div title="Loose units in the WH (prepacks counted separately)"><b>${f0(a[18])} / ${f0(a[19])}</b><span>WH loose units N / S</span></div>
+   <div title="${ratio?'Units per pack: '+esc(szTxt(ratio)):'Not in PREPACKS_ALLOCATION_HELPER_V1'}"><b>${pp?'Yes · depth '+pp:'No'}</b><span>${ratio?'Prepack: '+szTxt(ratio):'Prepack'}</span></div>
+   <div title="Sendable packs = min(helper sets, live PP codes) per zone"><b>${pp?f0(a[43])+' / '+f0(a[44]):'–'}</b><span>${pp?'Prepacks N / S = '+f0((a[43]+a[44])*pp)+' units':'Prepack units'}</span></div>
+   <div title="All offline sales since data start (Jul 2023), excl. OMS / QCOM"><b>${f0(a[23])}</b><span>offline units · lifetime</span></div>
+   <div><b>${f0(a[37])} / ${f0(a[38])}</b><span>offline units · L30 / L90</span></div>
+   <div><b>${a[24]}</b><span>stores sold in (lifetime)</span></div>
+   <div title="Customer returns made at stores ÷ offline units sold, lifetime. Online / WH / marketplace returns are excluded."><b>${pc(a[25])}</b><span>store return rate · lifetime</span></div>
+   <div><b>${f2(a[26])}</b><span>online ROS / day</span></div>
    <div><b>${a[30]?'Yes':'No'}</b><span>offline allocated</span></div><div><b>${a[33]}</b><span>stores sent via B2B (60d)</span></div>
   </div>
-  <div class="sz" style="margin-top:6px">WH N: ${szTxt(a[20])||'–'}<br>WH S: ${szTxt(a[21])||'–'}</div>
- </div></div></div>`;
- // neighbours
- const cal=D.calib[cat]||{};
- h+=`<div class="card"><h2>Similar SKUs (${items.length})</h2><div class="hint">Score = visual × tier multiplier × (1 + ${D.damp} × soft-attribute match). Quality floor ${cal.floor??'–'} (calibrated from ${cal.sibling_pairs??0} colourway-sibling pairs). Obvious = same style, different colour.</div>
- <div class="grid" style="margin-top:8px">${items.map(x=>{const b=K[x.k],st=storeSummary(x.k);return `<div class="nb" onclick="showSku('${b[0]}')">
-  <img src="${img(x.k)}" loading="lazy" onerror="this.style.visibility='hidden'"><div class="s">${esc(b[0])} <span class="tag t${b[22]}" style="font-size:10px">${AGE[b[22]]}</span></div>
-  <div class="mut" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(b[2])}</div>
-  <div><b>${f2(x.final)}</b> <span class="mut">vis ${f2(x.vis)} · ${D.tierTag[x.tier]} · ${x.obv?'<b>Obvious</b>':'Other'}</span></div>
-  <div class="mut">${esc(W[b[10]])} · ₹${f0(b[13])} · GP ${b[15]<0?'–':'₹'+f0(b[15])}</div>
-  <div>Offline ${f0(b[23])}u / ${b[24]} stores · ret ${pc(b[25])}</div>
-  <div>Now: ${st.stores} stores · ROS ${f2(st.ros)}/store/day · STR ${pc(st.str)}</div>
-  <div class="mut" style="font-size:11px">soft: ${D.soft.filter((s,i)=>(x.mask>>i)&1).join(', ')||'none'} · designs ${x.dm?'✓':'✗'} print ${x.pm?'✓':'✗'}</div></div>`}).join('')}</div></div>`;
- h+=insights(k,items);
- h+=placementHtml(k);
- out.innerHTML=h;wirePlacement(k);
+  <div class="sz" style="margin-top:6px">WH N loose: ${szTxt(a[20])||'–'}<br>WH S loose: ${szTxt(a[21])||'–'}</div>
+ </div></div></div>
+ <div class="card"><div class="bar2" style="justify-content:space-between"><h2 style="margin:0">Similar SKUs</h2>
+  ${radio('match',[['def','Default','Blended score: visual × tier × attribute boost, above the quality floor'],['vis','Visual','Most similar images, ignoring attribute tiers and the floor'],['meta','Meta','Same collar / fit / material first, then most matching attributes, then image']],MATCH)}</div>
+  <div class="hint" id="matchHint"></div><div class="simgrid" id="simGrid"></div></div>
+ <div id="insights"></div>
+ <div class="card" id="placeCard"></div>
+ ${explainer(a)}`;
+ wireAdd();wireRadio(out,'match',v=>{MATCH=v;renderSimilar(k)});renderSimilar(k);renderPlacement();
+}
+function renderSimilar(k){
+ const items=neighbours(k,MATCH),a=K[k];
+ document.getElementById('matchHint').textContent={def:'Default: score = visual similarity × tier multiplier × (1 + '+D.damp+' × attribute match). Only matches above the quality floor are shown.',
+  vis:'Visual: the 10 most similar product images in the category, regardless of attributes.',meta:'Meta: tightest attribute tier first (collar + fit + material), then the most soft-attribute matches, then image similarity.'}[MATCH];
+ document.getElementById('simGrid').innerHTML=items.length?items.map(x=>{const b=K[x.k],st=storeSummary(x.k);return `<div class="sc" onclick="showSku('${b[0]}')">
+  <div class="im"><img src="${img(x.k)}" loading="lazy" onerror="this.style.visibility='hidden'">
+   ${b[39]?`<span class="tl badge b-nrc" title="${esc(nrcTip(b))}">NRC</span>`:''}
+   <span class="tr"><span class="tag t${b[22]}" style="font-size:10px">${AGE[b[22]]}</span><span class="badge ${x.obv?'b-obv':'b-oth'}" title="${x.obv?'Same style, different colour':'Different style'}">${x.obv?'OBVIOUS':'OTHER'}</span></span></div>
+  <div class="body"><div class="code">${esc(b[0])}</div><div class="nm" title="${esc(b[2])}">${esc(b[2])}</div>
+   <div class="score"><b>${f2(x.final)}</b><span>visual ${f2(x.vis)} · ${D.tierTag[x.tier]}</span></div>
+   <div class="mini"><div><b>₹${f0(b[13])}</b><span>MRP</span></div><div><b>${b[15]<0?'–':'₹'+f0(b[15])}</b><span>GP</span></div><div><b>${esc(W[b[10]])||'–'}</b><span>colour</span></div>
+    <div title="Offline units lifetime / last 30 days"><b>${f0(b[23])} · ${f0(b[37])}</b><span>units life · L30</span></div><div title="Stores carrying it now · avg ROS per store"><b>${st.stores} · ${f2(st.ros)}</b><span>stores · ROS</span></div>
+    <div title="Store sell-through (30d) · store return rate (lifetime)"><b>${pc(st.str)} · ${pc(b[25])}</b><span>STR · returns</span></div></div>
+   <div class="chips">${D.soft.filter((s,i)=>(x.mask>>i)&1).map(s=>`<span class="chip">${s.replace('_',' ').toLowerCase()}</span>`).join('')||'<span class="mut" style="font-size:11px">no attribute matches</span>'}</div></div></div>`}).join('')
+  :'<div class="mut">No similar SKUs cleared the quality floor. Try "Visual" or "Meta".</div>';
+ document.getElementById('insights').innerHTML=insights(k,items);
 }
 function storeSummary(k){let n=0,ros=0,l30=0,stk=0;for(let si=0;si<NS;si++){const r=STOCK[si*K.length+k];if(r){n++;ros+=r[4]/1000;l30+=r[3];stk+=r[2]}}
  return {stores:n,ros:n?ros/n:0,str:(l30+stk)?l30/(l30+stk):0}}
 function insights(k,items){
- const a=K[k],sold=items.filter(x=>K[x.k][23]>0);if(!items.length)return `<div class="card warn">No similar SKUs cleared the quality floor, so placement falls back to store baselines.</div>`;
+ const a=K[k],sold=items.filter(x=>K[x.k][23]>0);if(!items.length)return '';
  const avg=(arr,f)=>arr.length?arr.reduce((s,x)=>s+f(x),0)/arr.length:0;
  const mrps=items.map(x=>K[x.k][13]).filter(x=>x>0),gps=items.map(x=>K[x.k][15]).filter(x=>x>=0);
  const byZone={NORTH:0,SOUTH:0},byClus={};
@@ -191,54 +374,62 @@ function insights(k,items){
  const topClus=Object.entries(byClus).sort((p,q)=>q[1]-p[1]).slice(0,5);
  const tiers={};items.forEach(x=>tiers[D.tierTag[x.tier]]=(tiers[D.tierTag[x.tier]]||0)+1);
  const priceDelta=mrps.length?a[13]-avg(mrps,x=>x):0;
- return `<div class="card"><h2>Insights</h2><div class="kpi">
-  <div><b>${sold.length}/${items.length}</b><span>similar SKUs with offline sales</span></div>
-  <div><b>${items.filter(x=>x.obv).length}</b><span>colourway siblings (obvious)</span></div>
-  <div><b>₹${f0(avg(mrps,x=>x))}</b><span>avg similar MRP (${priceDelta>=0?'+':''}${f0(priceDelta)} vs this)</span></div>
-  <div><b>₹${f0(avg(gps,x=>x))}</b><span>avg similar GP</span></div>
-  <div><b>${f0(avg(sold,x=>K[x.k][23]))}</b><span>avg offline units / similar SKU</span></div>
-  <div><b>${pc(avg(sold,x=>K[x.k][25]))}</b><span>avg similar return rate</span></div>
-  <div><b>${f0(byZone.NORTH)} / ${f0(byZone.SOUTH)}</b><span>similar L30 units North / South</span></div></div>
+ return `<div class="card"><h2>Insights (from the ${items.length} similar SKUs above)</h2><div class="kpi">
+  <div><b>${sold.length}/${items.length}</b><span>have offline sales</span></div>
+  <div><b>${items.filter(x=>x.obv).length}</b><span>colourway siblings</span></div>
+  <div><b>₹${f0(avg(mrps,x=>x))}</b><span>avg MRP (this SKU ${priceDelta>=0?'+':''}${f0(priceDelta)})</span></div>
+  <div><b>₹${f0(avg(gps,x=>x))}</b><span>avg GP</span></div>
+  <div title="Lifetime offline units per similar SKU that has sold"><b>${f0(avg(sold,x=>K[x.k][23]))}</b><span>avg offline units · lifetime</span></div>
+  <div title="Store customer returns ÷ offline units, lifetime"><b>${pc(avg(sold,x=>K[x.k][25]))}</b><span>avg store return rate</span></div>
+  <div title="Units SOLD in the last 30 days by the similar SKUs, in North vs South stores (not inventory)"><b>${f0(byZone.NORTH)} / ${f0(byZone.SOUTH)}</b><span>L30 units sold · North / South stores</span></div></div>
   <div style="margin-top:8px">Match tiers: ${Object.entries(tiers).map(([t,n])=>`<span class="chip">${t}: ${n}</span>`).join('')}</div>
-  <div>Similar SKUs sell best in: ${topClus.map(([c,n])=>`<span class="chip">${esc(c)} · ${f0(n)}u L30</span>`).join('')||'<span class="mut">no current offline sales</span>'}</div></div>`;
+  <div>Best-selling clusters (L30 units sold): ${topClus.map(([c,n])=>`<span class="chip">${esc(c)} · ${f0(n)}</span>`).join('')||'<span class="mut">no current offline sales</span>'}</div></div>`;
 }
-function placementHtml(k){
- return `<div class="card"><h2>Where to allocate</h2><div class="hint">Projected sales come from similar SKUs' rate of sale in each store (weighted by similarity and recency), blended with this SKU's own sales where it exists. Stores are ranked by the weighted score (weights are in the Allocation tab). Quantity = projected ${D.alloc.days_cover}-day sales − current stock, capped by DOI, the store's fill ceiling (Allocation tab) and WH stock (preferred zone first).</div>
- <div class="filters" style="margin:8px 0"><select id="pZone"><option value="">All zones</option><option>NORTH</option><option>SOUTH</option></select>
- <select id="pClus"><option value="">All clusters</option>${[...new Set(S.map(s=>s[6]))].sort().map(c=>`<option>${esc(c)}</option>`).join('')}</select>
- <label>Top <input id="pTop" type="number" value="40" style="width:55px"> stores</label><label><input id="pAll" type="checkbox"> show stores with no allocation</label></div>
- <div id="pClusSum"></div><div class="scroll" id="pTbl"></div></div>`;
-}
-function wirePlacement(k){['pZone','pClus','pTop','pAll'].forEach(id=>document.getElementById(id).onchange=()=>renderPlacement(k));renderPlacement(k)}
-function placeSku(k,storeIdxs,cfg,w){
- const a=K[k],rows=[],ceil=(+document.getElementById('aFill').value||140)/100;let maxP=0,maxStr=0;
- for(const si of storeIdxs){const f=storeFactors(si,k);if(!f)continue;rows.push({si,f});maxP=Math.max(maxP,f.p);maxStr=Math.max(maxStr,f.str)}
- rows.forEach(r=>{const sc=score(r.f,w,maxP,maxStr);r.score=sc.s;r.comp=sc.c;const n=needQty(k,r.si,r.f.p,cfg);r.room=fillRoom(r.si,a[1],ceil);
-  r.need=Math.min(n.need,Math.max(r.room,0));r.have=n.have;r.capped=n.need>r.need});
- rows.sort((x,y)=>y.score-x.score);
- const wh=[a[20].slice(),a[21].slice()];
- for(const r of rows){r.alloc=0;r.wh='';if(r.need<=0)continue;
-  const pref=zoneWh(S[r.si][5]),order=pref<0?(wh[0].reduce((p,q)=>p+q,0)>=wh[1].reduce((p,q)=>p+q,0)?[0,1]:[1,0]):[pref,1-pref];
-  for(const z of order){const avail=wh[z].reduce((p,q)=>p+q,0);if(!avail)continue;const q=Math.min(r.need,avail);const sp=sizeSplit(k,r.si,q,wh[z]);if(!sp)continue;
-   const got=sp.reduce((p,q)=>p+q,0);if(!got)continue;sp.forEach((x,i)=>wh[z][i]-=x);r.alloc=got;r.split=sp;r.wh=z?'South':'North';r.fallback=pref>=0&&z!==pref;break}}
- return rows;
-}
-function renderPlacement(k){
- const z=document.getElementById('pZone').value,c=document.getElementById('pClus').value,top=+document.getElementById('pTop').value||40,all=document.getElementById('pAll').checked;
- const sts=[];for(let si=0;si<NS;si++)if((!z||S[si][5]===z)&&(!c||S[si][6]===c))sts.push(si);
- const rows=placeSku(k,sts,cfgNow(),weights());
- const noWh=(K[k][18]+K[k][19])<=0,shown=rows.filter(r=>all||noWh||r.alloc>0).slice(0,top);
- const clus={};rows.forEach(r=>{if(!r.alloc)return;const cl=S[r.si][6];clus[cl]=clus[cl]||{u:0,n:0,p:0};clus[cl].u+=r.alloc;clus[cl].n++;clus[cl].p+=r.f.p*30});
- document.getElementById('pClusSum').innerHTML=(K[k][32]<0?'<div class="warn" style="margin-bottom:6px">No store projection: this SKU has no WH stock and is not new or recently inwarded. Projections are built only for allocatable SKUs.</div>':noWh?'<div class="warn" style="margin-bottom:6px">No WH stock for this SKU: the store ranking below is for planning (where it would sell), with no quantities.</div>':'')+`<div style="margin-bottom:6px"><b>By cluster:</b> ${Object.entries(clus).sort((p,q)=>q[1].u-p[1].u).map(([cl,v])=>`<span class="chip">${esc(cl)}: ${v.u}u · ${v.n} stores · ~${f0(v.p)} sales/30d</span>`).join('')||'<span class="mut">no allocation possible (no WH stock or no projected demand)</span>'}</div>`;
- const el=document.getElementById('pTbl');
- el.innerHTML=`<table><thead><tr><th>#</th><th>Store</th><th>Cluster</th><th>Zone</th><th class="n">Score</th><th class="n">Proj ROS/day</th><th class="n">Proj 30d</th><th>Evidence</th><th class="n">Have</th><th class="n">Alloc</th><th>WH</th><th>Sizes</th><th class="n">Fill</th><th class="n">STR</th><th class="n">Opt gap</th><th class="n">Mix gap</th><th class="n">Colour gap</th><th class="n">DOI cap</th></tr></thead><tbody>${
- shown.map((r,i)=>{const s=S[r.si],h=r.f.h;return `<tr><td>${i+1}</td><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td>${s[5]}</td><td class="n" data-v="${r.score}">${f2(r.score)}</td>
- <td class="n">${f2(r.f.p)}</td><td class="n">${f1(r.f.p*30)}</td><td class="mut">${EVTXT[r.f.ev]}</td><td class="n">${r.have}</td><td class="n"><b>${r.alloc||''}</b></td>
- <td>${r.wh}${r.fallback?' <span class="warn">(fallback)</span>':''}${r.capped&&!r.alloc?'<span class="mut">'+(r.f.h.base?'store full':'no base stock')+'</span>':''}</td><td class="sz">${szTxt(r.split)}</td><td class="n ${h.fill>1.05?'bad':h.fill<.85?'good':''}">${pc(h.fill)}</td><td class="n">${pc(h.str)}</td>
- <td class="n">${h.idealOpts-h.opts}</td><td class="n ${r.f.mixGap>0?'good':'bad'}" data-v="${r.f.mixGap}">${(r.f.mixGap*100).toFixed(1)}pp</td><td class="n" data-v="${r.f.colGap}">${(r.f.colGap*100).toFixed(1)}pp</td><td class="n">${s[10]}d</td></tr>`}).join('')}</tbody></table>`;
- sortable(el);
+function explainer(a){
+ const cal=D.calib[CATS[a[1]]]||{},bt=D.backtest;
+ const step=(t,n,d)=>`<div class="st"><b>${t}</b>${n!==''?`<div class="n">${n}</div>`:''}<div class="mut">${d}</div></div>`,ar='<div class="ar">→</div>';
+ return `<details class="ex"><summary>How similar SKUs are found (click to open)</summary>
+ <div class="flow">${step('1 · Image embedding','','Every product photo is turned into a 768-number vector by <b>Marqo-FashionSigLIP</b>, a fashion image model. It is <b>pre-trained and used as is</b>: nothing is trained on Snitch data.')}${ar}
+ ${step('2 · Candidate pool',f0(cal.pool||0),`${CATS[a[1]]} that are live or have a live date (drafts without one are skipped). The SKU itself is never matched to itself.`)}${ar}
+ ${step('3 · Attribute tiers','4 tiers',`Tightest first: collar + fit + material (×1.0) → collar + fit (×0.8) → collar (×0.6) → category (×0.4). Widen only if fewer than ${D.nbW} matches pass.`)}${ar}
+ ${step('4 · Attribute boost','+'+Math.round(D.damp*100)+'% max',`Share of matching soft attributes (sleeve, closure, pocket, style, fabric weight, composition, occasion, fit).`)}${ar}
+ ${step('5 · Quality floor',cal.floor??'–',`Visual × (1 + boost) must clear this. It is set to the ${D.calibPct}th percentile of ${f0(cal.sibling_pairs||0)} colourway-sibling pairs (same style, different colour), the only "calibration" done on our data.`)}</div>
+ <div class="hint">Score = visual × tier multiplier × (1 + ${D.damp} × attribute match). Top 10 by score are shown; "Visual" and "Meta" re-order the whole pool by image only or by attributes first.
+ ${bt?` Demand projection backtest (leave-one-out, ${bt.skus} SKUs): error ${f2(bt.wape)} vs ${f2(bt.naive_wape)} for a store-average guess, store-ranking correlation ${f2(bt.spearman)}.`:''}</div></details>`;
 }
 
+// ---------------------------------------------------------------- TAB 1: where to allocate (basket)
+function renderPlacement(){
+ const el=document.getElementById('placeCard');if(!el||CUR===null)return;
+ const ks=(BASKET.length?BASKET:[K[CUR][0]]).map(s=>idx[s]).filter(k=>k!==undefined);
+ const z=document.getElementById('pZone')?.value||'',c=document.getElementById('pClus')?.value||'';
+ el.innerHTML=`<div class="bar2" style="justify-content:space-between"><h2 style="margin:0">Where to allocate</h2>
+  <div class="bar2">${radio('pmode',[['auto','Auto','Fresh where the store does not carry the SKU, replen where it does'],['fresh','Fresh','Only stores that do not carry the SKU: 2 prepacks or one 12-unit size set'],['replen','Replen','Only stores that carry the SKU: whole prepacks or the sizes needed to make it full']],PMODE)}
+  <select id="pZone"><option value="">All zones</option><option ${z==='NORTH'?'selected':''}>NORTH</option><option ${z==='SOUTH'?'selected':''}>SOUTH</option></select>
+  <select id="pClus"><option value="">All clusters</option>${[...new Set(S.map(s=>s[6]))].sort().map(x=>`<option ${x===c?'selected':''}>${esc(x)}</option>`).join('')}</select>
+  <button class="b" id="pCsv">Download allocation</button></div></div>
+  <div class="basket" style="margin:8px 0"><b>SKUs in this allocation:</b>${BASKET.length?BASKET.map(s=>`<span class="item"><a href="#" onclick="showSku('${s}');return false">${s}</a><button title="Remove" onclick="basketToggle('${s}')">×</button></span>`).join('')+
+   `<a href="#" onclick="BASKET=[];LS.set('tw_basket',[]);renderPlacement();document.getElementById('addAlloc').outerHTML=addBtn(CUR);wireAdd();return false" class="mut">clear all</a>`
+   :`<span class="mut">only ${K[CUR][0]}. Use "+ Add to allocation" on several SKUs to allocate them together.</span>`}</div>
+  <details><summary class="mut" style="cursor:pointer">How this allocation works</summary>${HOW_ALLOC}</details>
+  <div id="pSum"></div><div class="scroll" id="pTbl"></div>`;
+ wireRadio(el,'pmode',v=>{PMODE=v;renderPlacement()});
+ ['pZone','pClus'].forEach(id=>document.getElementById(id).onchange=renderPlacement);
+ const sts=[];for(let si=0;si<NS;si++)if((!z||S[si][5]===z)&&(!c||S[si][6]===c))sts.push(si);
+ const out=allocate(ks,sts,PMODE,cfgNow(),weights());
+ const units=sum(out.map(r=>r.units)),byS={};out.forEach(r=>{byS[r.k]=(byS[r.k]||0)+r.units});
+ const noStock=ks.filter(k=>sum(K[k][20])+sum(K[k][21])+K[k][43]+K[k][44]===0);
+ document.getElementById('pSum').innerHTML=`<div class="kpi"><div><b>${f0(units)}</b><span>units allocated</span></div><div><b>${new Set(out.map(r=>r.si)).size}</b><span>stores</span></div>
+  <div><b>${out.filter(r=>r.type==='FRESH').length} / ${out.filter(r=>r.type==='REPLEN').length}</b><span>fresh / replen lines</span></div>
+  <div><b>${f0(sum(out.map(r=>r.sold)))}</b><span>expected sales in ${D.alloc.days_cover}d</span></div>
+  ${ks.map(k=>`<div><b>${f0(byS[k]||0)}</b><span>${K[k][0]}</span></div>`).join('')}</div>
+  ${noStock.length?`<div class="warn" style="margin-top:6px">No WH stock (loose or prepack): ${noStock.map(k=>K[k][0]).join(', ')}.</div>`:''}
+  ${!out.length?'<div class="warn" style="margin-top:6px">Nothing allocated: no WH stock, no projected demand, every store is full (fill ceiling) or no store matches the mode / filters.</div>':''}`;
+ document.getElementById('pTbl').innerHTML=out.length?allocTable(out):'';sortable(document.getElementById('pTbl'));
+ document.getElementById('pCsv').onclick=()=>downloadAlloc(out,'topwear_basket_allocation');
+}
+
+// ---------------------------------------------------------------- TAB 2 filters
 // ---------------------------------------------------------------- TAB 2 filters
 const F={zone:'',cluster:'',type:'',cat:'',band:'',fresh:'',stores:new Set()};
 function msHtml(){const opts=S.map((s,i)=>[i,s[1]]).sort((p,q)=>p[1].localeCompare(q[1]));
@@ -311,58 +502,41 @@ function storeDetail(si){
 }
 const skuMini=rows=>rows.length?`<table><tbody>${rows.map(r=>`<tr class="click" onclick="showSku('${K[r[1]][0]}')"><td>${K[r[1]][0]}</td><td class="mut">${esc(W[K[r[1]][10]])}</td><td class="n">${r[2]}u</td><td class="n">L30 ${r[3]}</td><td class="n">${r[5]}d</td></tr>`).join('')}</tbody></table>`:'<div class="mut">none</div>';
 
-// ---------------------------------------------------------------- TAB 2 allocation run
-const WLAB={ros:'Projected ROS',str:'Store STR',mix_gap:'Metafield mix gap',option_gap:'Option gap',fill_gap:'Fill room',fresh_need:'Freshness need',target_gap:'Behind target',colour_gap:'Colour gap',price_gap:'Price band gap'};
-document.getElementById('wts').innerHTML=Object.entries(D.weights).map(([k,v])=>`<label>${WLAB[k]||k}<input type="number" step="0.05" data-k="${k}" value="${v}"></label>`).join('');
-document.getElementById('aCover').value=D.alloc.days_cover;document.getElementById('aMin').value=D.alloc.min_pack;document.getElementById('aMax').value=D.alloc.max_per_store;document.getElementById('aFill').value=D.alloc.fill_ceiling;
-const cfgNow=()=>({cover:+document.getElementById('aCover').value||30,min:+document.getElementById('aMin').value||1,max:+document.getElementById('aMax').value||24});
-document.querySelectorAll('#wts input').forEach(i=>i.onchange=()=>{const k=idx[skuIn.value.trim().toUpperCase()];if(k!==undefined&&document.getElementById('pTbl'))renderPlacement(k)});
+// ---------------------------------------------------------------- TAB 2 allocation run (same allocator + pack rules as the basket)
+const WLAB={ros:'Expected sell-through',str:'Store STR',mix_gap:'Metafield gap closed',option_gap:'Option gap (fresh)',fill_gap:'Category fill room',
+ fresh_need:'Store freshness need',target_gap:'Store behind target',colour_gap:'Colour gap closed',price_gap:'Price-band gap closed'};
+const WTIP={ros:'Share of the line expected to sell within the days of cover at this store',str:'Store category sell-through vs the best store',
+ mix_gap:'Share of the line that fills the store\'s metafield-bucket gap',option_gap:'Fresh line into a store that is below its ideal option count',
+ fill_gap:'Share of the line that fits within the store\'s category fill ceiling',fresh_need:'1 − share of fresh stock at the store',
+ target_gap:'How far the store is behind its MTD sales target',colour_gap:'Share of the line that fills the store\'s colour gap',
+ price_gap:'Share of the line that fills the store\'s price-band gap (adjacent band counts half)'};
+document.getElementById('wts').innerHTML=Object.entries(D.weights).map(([k,v])=>`<label title="${esc(WTIP[k]||'')}">${WLAB[k]||k}<input type="number" step="0.05" data-k="${k}" value="${v}"></label>`).join('');
+document.getElementById('aCover').value=D.alloc.days_cover;document.getElementById('aFill').value=D.alloc.fill_ceiling;
+const cfgNow=()=>({cover:+document.getElementById('aCover').value||30,fill:+document.getElementById('aFill').value||140});
+document.querySelectorAll('#wts input,#aCover,#aFill').forEach(i=>i.onchange=()=>{if(CUR!==null)renderPlacement()});
 let LAST=[];
-function skuPass(k){const a=K[k];if(a[32]<0||(a[18]+a[19])<=0)return false;if(!catSel().includes(a[1]))return false;if(F.band&&W[a[28]]!==F.band)return false;
+function skuPass(k){const a=K[k];if(a[32]<0||(sum(a[20])+sum(a[21])+a[43]+a[44])<=0)return false;if(!catSel().includes(a[1]))return false;if(F.band&&W[a[28]]!==F.band)return false;
  if(F.fresh==='new'&&a[22]===2)return false;if(F.fresh==='old'&&a[22]!==2)return false;if(F.fresh==='fresh'){const d=daysSince(a[29]);if(d<0||d>D.freshDays)return false}return true}
 document.getElementById('aRun').onclick=()=>{
- const t0=performance.now(),sts=storesFiltered(),cfg=cfgNow(),w=weights(),fillCeil=(+document.getElementById('aFill').value||140)/100,newOnly=document.getElementById('aNewOnly').checked;
- const ks=[];for(let k=0;k<K.length;k++)if(skuPass(k))ks.push(k);
- let maxP=0,maxStr=0;for(const si of sts){for(const c of catSel()){const h=D.health[si][c];if(h)maxStr=Math.max(maxStr,h.str)}}
- const cand=[];
- for(const k of ks){for(const si of sts){const p=proj(k,si);if(p*cfg.cover<1)continue;if(newOnly&&STOCK[si*K.length+k])continue;maxP=Math.max(maxP,p);cand.push([k,si,p])}}
- const scored=[];for(const [k,si,p] of cand){const f=storeFactors(si,k);if(!f)continue;const n=needQty(k,si,p,cfg);if(n.need<=0)continue;scored.push({k,si,f,need:n.need,have:n.have,s:score(f,w,maxP,maxStr).s})}
- scored.sort((x,y)=>y.s-x.s);
- const wh=new Map(),room=new Map(),out=[];
- const whOf=k=>{if(!wh.has(k))wh.set(k,[K[k][20].slice(),K[k][21].slice()]);return wh.get(k)};
- for(const r of scored){
-  const c=K[r.k][1],key=r.si*2+c;if(!room.has(key))room.set(key,fillRoom(r.si,c,fillCeil));
-  let rm=room.get(key);if(rm<=0)continue;
-  const pool=whOf(r.k),pref=zoneWh(S[r.si][5]),sum=a=>a.reduce((p,q)=>p+q,0);
-  const order=pref<0?(sum(pool[0])>=sum(pool[1])?[0,1]:[1,0]):[pref,1-pref];
-  const q0=Math.min(r.need,rm);if(q0<cfg.min&&q0<r.need)continue;
-  for(const z of order){if(!sum(pool[z]))continue;const sp=sizeSplit(r.k,r.si,Math.min(q0,sum(pool[z])),pool[z]);if(!sp)continue;const got=sum(sp);if(got<Math.min(cfg.min,r.need))continue;
-   sp.forEach((x,i)=>pool[z][i]-=x);room.set(key,rm-got);out.push({...r,alloc:got,split:sp,wh:z?'South':'North',fallback:pref>=0&&z!==pref});break}}
+ const t0=performance.now(),sts=storesFiltered(),ks=[];for(let k=0;k<K.length;k++)if(skuPass(k))ks.push(k);
+ const out=allocate(ks,sts,document.getElementById('aMode').value,cfgNow(),weights());
  LAST=out;renderAlloc(out,ks.length,sts.length,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;
 };
 function renderAlloc(out,nk,ns,ms){
- const units=out.reduce((a,r)=>a+r.alloc,0),stores=new Set(out.map(r=>r.si)).size,skus=new Set(out.map(r=>r.k)).size,newOpts=out.filter(r=>!r.have).length;
- const n=out.filter(r=>r.wh==='North').reduce((a,r)=>a+r.alloc,0);
- document.getElementById('allocSum').innerHTML=`<div class="kpi"><div><b>${f0(units)}</b><span>units allocated</span></div><div><b>${stores}</b><span>stores</span></div><div><b>${skus}</b><span>SKUs (of ${nk} eligible)</span></div>
- <div><b>${newOpts}</b><span>new options to stores</span></div><div><b>${f0(n)} / ${f0(units-n)}</b><span>from WH North / South</span></div><div><b>${f0(out.reduce((a,r)=>a+r.f.p*30,0))}</b><span>projected sales / 30d</span></div>
- <div><b>${(ms/1000).toFixed(1)}s</b><span>${ns} stores evaluated</span></div></div>`;
- const el=document.getElementById('allocTbl'),shown=out.slice(0,2000);
- el.innerHTML=`<div class="hint">${out.length>2000?'Showing the top 2,000 of '+out.length+' lines (the CSV has all of them).':''}</div><table><thead><tr><th>Store</th><th>Cluster</th><th>SKU</th><th>Cat</th><th>Name</th><th>Colour</th><th class="n">MRP</th><th>Age</th><th class="n">Score</th><th class="n">Proj ROS</th><th>Evidence</th><th class="n">Have</th><th class="n">Alloc</th><th>WH</th><th>Sizes</th><th class="n">Store fill</th><th class="n">Mix gap</th></tr></thead><tbody>${
- shown.map(r=>{const a=K[r.k],s=S[r.si];return `<tr><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td><a href="#" onclick="showSku('${a[0]}');return false">${a[0]}</a></td><td>${CATS[a[1]]}</td><td>${esc(a[2]).slice(0,34)}</td><td>${esc(W[a[10]])}</td><td class="n">${f0(a[13])}</td><td>${AGE[a[22]]}</td>
- <td class="n">${f2(r.s)}</td><td class="n">${f2(r.f.p)}</td><td class="mut">${EVTXT[r.f.ev]}</td><td class="n">${r.have}</td><td class="n"><b>${r.alloc}</b></td><td>${r.wh}${r.fallback?' <span class="warn">fb</span>':''}</td><td class="sz">${szTxt(r.split)}</td><td class="n">${pc(r.f.h.fill)}</td><td class="n">${(r.f.mixGap*100).toFixed(1)}pp</td></tr>`}).join('')}</tbody></table>`;
- sortable(el);
+ const units=sum(out.map(r=>r.units)),n=sum(out.filter(r=>!r.z).map(r=>r.units));
+ document.getElementById('allocSum').innerHTML=`<div class="kpi"><div><b>${f0(units)}</b><span>units allocated</span></div><div><b>${new Set(out.map(r=>r.si)).size}</b><span>stores</span></div>
+ <div><b>${new Set(out.map(r=>r.k)).size}</b><span>SKUs (of ${nk} eligible)</span></div><div><b>${out.filter(r=>r.type==='FRESH').length} / ${out.filter(r=>r.type==='REPLEN').length}</b><span>fresh / replen lines</span></div>
+ <div><b>${f0(sum(out.filter(r=>r.packType==='PREPACK').map(r=>r.packs)))}</b><span>prepacks sent</span></div><div><b>${f0(n)} / ${f0(units-n)}</b><span>from WH North / South</span></div>
+ <div><b>${f0(sum(out.map(r=>r.sold)))}</b><span>expected sales in ${D.alloc.days_cover}d</span></div><div><b>${(ms/1000).toFixed(1)}s</b><span>${ns} stores evaluated</span></div></div>`;
+ const el=document.getElementById('allocTbl');
+ el.innerHTML=(out.length>2000?'<div class="hint">Showing the top 2,000 of '+f0(out.length)+' lines (the CSV has all of them).</div>':'')+allocTable(out,2000);sortable(el);
 }
-document.getElementById('aCsv').onclick=()=>{
- const hdr=['BRANCH_CODE','STORE','CLUSTER','ZONE','SKU_GROUP','CATEGORY','PRODUCT_NAME','COLOUR','MRP','AGE_TAG','SCORE','PROJ_ROS','EVIDENCE','STORE_STOCK','ALLOC_QTY','WAREHOUSE','FALLBACK',...SZ.map(z=>'QTY_'+z),'STORE_FILL','MIX_GAP_PP'];
- const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
- const lines=[hdr.join(',')].concat(LAST.map(r=>{const a=K[r.k],s=S[r.si];return [s[0],s[1],s[6],s[5],a[0],CATS[a[1]],a[2],W[a[10]],a[13],AGE[a[22]],r.s.toFixed(3),r.f.p.toFixed(3),EVTXT[r.f.ev],r.have,r.alloc,r.wh,r.fallback?'Y':'',...r.split,(r.f.h.fill*100).toFixed(0),(r.f.mixGap*100).toFixed(1)].map(q).join(',')}));
- const blob=new Blob([lines.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
- el.href=u;el.download='topwear_allocation_'+new Date().toISOString().slice(0,10)+'.csv';el.click();URL.revokeObjectURL(u);
-};
+document.getElementById('aCsv').onclick=()=>downloadAlloc(LAST,'topwear_allocation');
 
 // ---------------------------------------------------------------- TAB 3 nudges
+// ---------------------------------------------------------------- TAB 3 nudges
 function nudges(){
- const inw=[];for(let k=0;k<K.length;k++){const a=K[k],d=daysSince(a[29]);if(d<0||d>D.nudgeDays)continue;inw.push({k,d,wh:a[18]+a[19]})}
+ const inw=[];for(let k=0;k<K.length;k++){const a=K[k],d=daysSince(a[29]);if(d<0||d>D.nudgeDays)continue;inw.push({k,d,wh:a[18]+a[19]+(a[43]+a[44])*(a[42]||0)})}   // loose + prepack units
  inw.sort((p,q)=>(K[p.k][30]-K[q.k][30])||(q.d-p.d));
  const pending=inw.filter(x=>!K[x.k][30]&&x.wh>0);
  const alerts=[];
@@ -374,14 +548,16 @@ function nudges(){
   if(h.fresh<.1&&h.stock>0)alerts.push([si,c,'No fresh stock',pc(h.fresh)+' fresh','warn'])}
  document.getElementById('nudgeOut').innerHTML=`<div class="card"><h2>New WH inwards (last ${D.nudgeDays} days): ${pending.length} not yet allocated offline</h2>
  <div class="hint">From SKU_LIVE_MECH_V2 (WH live / inward date, offline allocated status) and B2B_JOURNEY. Click a row to see the best stores for that SKU.</div>
- <div class="scroll"><table><thead><tr><th></th><th>SKU</th><th>Cat</th><th>Name</th><th>Colour</th><th class="n">MRP</th><th>WH inward</th><th class="n">Days in WH</th><th class="n">WH N</th><th class="n">WH S</th><th>Offline allocated</th><th class="n">Stores sent</th><th class="n">Top-10 store proj 30d</th></tr></thead><tbody>${
+ <div class="scroll"><table><thead><tr><th></th><th>SKU</th><th>Cat</th><th>Name</th><th>Colour</th><th class="n">MRP</th><th>WH inward</th><th class="n">Days in WH</th><th class="n" title="Loose + prepack units in the North WH">WH N</th><th class="n" title="Loose + prepack units in the South WH">WH S</th><th>Offline allocated</th><th class="n">Stores sent</th><th class="n">Top-10 store proj 30d</th></tr></thead><tbody>${
  inw.map(x=>{const a=K[x.k];let tp='–';if(a[32]>=0){const ps=[];for(let si=0;si<NS;si++)ps.push(proj(x.k,si));ps.sort((p,q)=>q-p);tp=f0(ps.slice(0,10).reduce((p,q)=>p+q,0)*30)}
  const urgent=!a[30]&&x.wh>0&&x.d>=3;return `<tr class="click" onclick="showSku('${a[0]}')"><td>${urgent?'<span class="tag" style="background:#fee2e2;color:#991b1b">ACT</span>':''}</td><td>${a[0]}</td><td>${CATS[a[1]]}</td><td>${esc(a[2]).slice(0,40)}</td><td>${esc(W[a[10]])}</td>
- <td class="n">${f0(a[13])}</td><td>${a[29]}</td><td class="n">${x.d}</td><td class="n">${f0(a[18])}</td><td class="n">${f0(a[19])}</td><td>${a[30]?'<span class="good">Yes</span>':'<span class="bad">No</span>'}</td><td class="n">${a[33]}</td><td class="n">${tp}</td></tr>`}).join('')}</tbody></table></div></div>
+ <td class="n">${f0(a[13])}</td><td>${a[29]}</td><td class="n">${x.d}</td><td class="n">${f0(a[18]+a[43]*(a[42]||0))}</td><td class="n">${f0(a[19]+a[44]*(a[42]||0))}</td><td>${a[30]?'<span class="good">Yes</span>':'<span class="bad">No</span>'}</td><td class="n">${a[33]}</td><td class="n">${tp}</td></tr>`}).join('')}</tbody></table></div></div>
  <div class="card"><h2>Store alerts (${alerts.length})</h2><div class="scroll"><table><thead><tr><th>Store</th><th>Cluster</th><th>Category</th><th>Alert</th><th>Detail</th></tr></thead><tbody>${
  alerts.map(([si,c,t,d,cl])=>`<tr class="click" onclick="tabGo('alloc');document.getElementById('fCat').value='${c}';F.cat='${c}';refresh2();storeDetail(${si})"><td>${esc(S[si][1])}</td><td>${esc(S[si][6])}</td><td>${CATS[c]}</td><td class="${cl}">${t}</td><td>${d}</td></tr>`).join('')}</tbody></table></div></div>`;
  document.querySelectorAll('#nudgeOut .scroll').forEach(sortable);
 }
-refresh2();nudges();
+
+document.getElementById('howAlloc').innerHTML=HOW_ALLOC;
+refresh2();nudges();renderRecent();
 const hq=location.hash.slice(1);if(hq&&idx[hq.toUpperCase()]!==undefined)showSku(hq);
 </script></body></html>
