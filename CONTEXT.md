@@ -24,6 +24,18 @@ A daily-refreshed dashboard for Shirts + T-shirts offline allocation. Similar SK
 - **Colour benchmark** = cluster 90-day sales share, because GS ideal-mix COLOUR / MATERIAL columns are empty. **Price benchmark** = the store's own 90-day sales share by MRP band.
 - **Warehouse:** a store's zone (NORTH/SOUTH) picks the preferred WH from `AVAILABILITY_MASTER_V2_MERGED`; the other zone is the fallback. WEST / unmapped stores use whichever WH has more stock.
 
+## Placement v2 (2026-11-20)
+- **Store return rate** = customer returns made at stores only (STORE_RETURNS_FACT_ITEMS rows whose MARKETPLACE_MAPPED is a COCO/COFO/FOCO/FOFO/FICO store). The table is ~97% online / WH / marketplace returns, which the first version wrongly included.
+- **Offline units** are labelled: lifetime (since Jul 2023), L30, L90.
+- **Exclusions:** SKUs starting with MP are dropped everywhere. Stores without base stock or with an unmapped cluster are dropped (today: MAPLE MYSURU, PANIPAT).
+- **NRC** (brand level) = cut at >= 1 store (store_replen_prepack cut rule incl. JIT) AND the WH (N+S) can build < 5 loose size sets (IST local_wh_cut rule). It flags ~5.8k SKUs because old tail SKUs with no WH stock count too.
+- **Prepacks:** sendable packs per zone = min(PREPACKS_ALLOCATION_HELPER_V1 sets, live PP codes in LIVE_INV_WAREHOUSE_OFFLINE_REPLEN), depth with most sets (as store_replen_prepack.sql). PP codes are separate rows in the WH table, so WH_N / WH_S are loose units. Prepacks are allocated before loose.
+- **Pack rules:**
+  - Fresh: 2 prepacks max, or one loose set XS1 S2 M3 L3 XL2 XXL1. S-XL must be complete; plus = at least 3 of 3XL-6XL.
+  - Replen: 1-2 whole prepacks, or only the loose sizes short of a full set / 30-day need.
+  - Fresh sets and packs are never cut down to fit.
+- **Basket allocator** (web/template.html `allocate`): greedy with lazy re-scoring. Gaps (meta, colour, price band, options, fill room) are held in units and consumed per line; the adjacent price band gets half credit.
+
 ## Known issues / open questions
 - [ ] The download format for the allocation CSV is to be defined; the current columns are a placeholder.
 - [ ] Fill > 100% almost everywhere: confirm whether GS_SHEET3 BASE_STOCK is current.
