@@ -12,6 +12,7 @@ WITH om0 AS (
 ),
 om AS (
     SELECT * FROM om0 WHERE COALESCE(cat_syn, {CATEGORY_PREFIX_CASE}) IN ({CATS})
+      AND s NOT LIKE 'MP%'
 ),
 opening_inv AS (            -- stock ~30 days ago (STR denominator, same as IST)
     SELECT UPPER(SKU_GROUP) s, BRANCH_CODE::INT bc, SUM(INVENTORY) OPEN_INV
