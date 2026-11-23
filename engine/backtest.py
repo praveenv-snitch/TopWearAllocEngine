@@ -34,7 +34,7 @@ def main():
     stores = d["stores"].drop_duplicates("BC")
     st_bc = sorted(int(b) for b in stores["BC"])
     skus, vecs = embeddings.embed(prods)
-    nbrs, _ = similarity.search(prods, skus, vecs)
+    nbrs, _, _ = similarity.search(prods, skus, vecs)
 
     est = ss[ss["DAYS_LIVE"] >= 30].groupby("SKU").filter(lambda g: len(g) >= 5)
     pool = sorted(set(est["SKU"]) & set(nbrs))
