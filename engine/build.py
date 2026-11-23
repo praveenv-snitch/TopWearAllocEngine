@@ -89,13 +89,19 @@ def main():
     prods = prepare_products(d["products"])
     store_sku, stores = d["store_sku"], d["stores"]
     stores = stores[stores["CATEGORY"].isin(C.CATEGORIES)
-                    & ~stores["STORE_NAME"].fillna("").str.upper().str.contains("WAREHOUSE|TEST|DUMMY")].reset_index(drop=True)
+                    & ~stores["STORE_NAME"].fillna("").str.upper().str.contains("WAREHOUSE|TEST|DUMMY")]
+    # stores need a base stock and a mapped cluster to be planned (e.g. SNITCH - MAPLE - MYSURU has neither cluster)
+    base_ok = pd.to_numeric(stores["BASE_STOCK"], errors="coerce").fillna(0) > 0
+    clus_ok = stores["CLUSTER"].fillna("").astype(str).str.strip().str.upper().replace({"NONE": "", "NAN": "", "UNMAPPED": ""}) != ""
+    dropped = stores.loc[~(base_ok & clus_ok), "STORE_NAME"].drop_duplicates().tolist()
+    stores = stores[base_ok & clus_ok].reset_index(drop=True)
+    print("  stores left out (no base stock / unmapped cluster): %d %s" % (len(dropped), dropped[:8]))
     print("products %d | store-sku %d | stores %d" % (len(prods), len(store_sku), stores["BC"].nunique()))
 
     print("Embedding images...")
     emb_skus, vecs = embeddings.embed(prods)
     print("Similarity search...")
-    nbrs, calib = similarity.search(prods, emb_skus, vecs)
+    nbrs, calib, alt_nbrs = similarity.search(prods, emb_skus, vecs)
 
     print("Store health...")
     hl, palette = health.build(stores, store_sku, prods, d["ideal_mix"], d["size_sales"])
@@ -165,23 +171,44 @@ def main():
             round(float(r.ONLINE_ROS or 0), 2), w(r.MIX_KEY), w(r.PRICE_BAND),
             _d(r.WH_LIVE_DATE) or _d(r.FIRST_WH_INWARD), 1 if _s(r.OFFLINE_ALLOCATED_STATUS) == "Offline Allocated" else 0,
             _d(r.FIRST_OFFLINE_SALE), proj_row.get(r.SKU, -1), len(sent.get(r.SKU, ())),
-            w(r.CLOSURE), w(r.POCKET), w(r.SKU_CLASS)])
+            w(r.CLOSURE), w(r.POCKET), w(r.SKU_CLASS),
+            _i(r.OFFLINE_L30), _i(r.OFFLINE_L90), int(r.IS_NRC), _i(r.CUT_STORES), _i(r.WH_SIZE_SETS),
+            _i(r.PP_DEPTH), _i(r.PP_N), _i(r.PP_S)])
 
-    nb_out = []
-    for s in sku_list:
-        row = []
-        for (cs, final, vis, tier, boost, matched, obv, dm, pm) in nbrs.get(s, [])[:C.SIM["top_k"]]:
-            mask = sum(1 << soft.index(a) for a in matched)
-            row += [ki[cs], int(round(vis * 1000)), int(round(boost * 1000)),
-                    tier | (obv << 3) | (dm << 4) | (pm << 5) | (mask << 6)]
-        nb_out.append(row)
+    NB_W = C.SIM["top_k"]
 
-    stock = []          # current store stock of in-scope SKUs
+    def nb_rows(src):
+        """Neighbours as a flat uint16 array: per SKU NB_W slots x [k+1 (0 = empty), visual*1000, boost*1000,
+        code low 16 bits, code high 16 bits]; code = tier | obvious<<3 | designs<<4 | print<<5 | soft-mask<<6."""
+        a = np.zeros((len(sku_list), NB_W, 5), np.uint16)
+        for i, s in enumerate(sku_list):
+            n = 0
+            for (cs, final, vis, tier, boost, matched, obv, dm, pm) in src.get(s, []):
+                if cs not in ki or n >= NB_W:
+                    continue
+                code = tier | (obv << 3) | (dm << 4) | (pm << 5) | (sum(1 << soft.index(x) for x in matched) << 6)
+                a[i, n] = (ki[cs] + 1, max(int(round(vis * 1000)), 0), int(round(boost * 1000)), code & 0xFFFF, code >> 16)
+                n += 1
+        return base64.b64encode(a.tobytes()).decode()
+
+    nb_out, nb_vis, nb_meta = nb_rows(nbrs), nb_rows(alt_nbrs["visual"]), nb_rows(alt_nbrs["meta"])
+
+    stock = []          # current store stock of in-scope SKUs (packed to uint16 below)
     ss = store_sku[(store_sku["INV"] + store_sku["JIT"] > 0) & store_sku["BC"].isin(st_idx) & store_sku["SKU"].isin(ki)]
     for r in ss.itertuples():
         si, k = st_idx[int(r.BC)], ki[r.SKU]
+        sz = _arr(r.SZ)
         stock.append([si, k, _i(r.INV + r.JIT), _i(r.L30), _i(r.ROS * 1000), _i(r.AGE_DAYS), int(r.IS_CUT),
-                      transit.get((si, k), 0), _i(r.LAST_SALE_DAYS) if r.LAST_SALE_DAYS == r.LAST_SALE_DAYS else -1])
+                      transit.get((si, k), 0), _i(r.LAST_SALE_DAYS) if r.LAST_SALE_DAYS == r.LAST_SALE_DAYS else -1,
+                      sz if any(sz) else 0])          # size stock (incl. JIT) for replen sizing
+
+    # [si, k, stock, l30, ros*1000, age, cut, transit, lastSale+1 (0 = never), sz x10] as uint16 (clipped)
+    st_arr = np.zeros((len(stock), 19), np.int64)
+    for j, r in enumerate(stock):
+        st_arr[j, :9] = r[:8] + [r[8] + 1]
+        if r[9]:
+            st_arr[j, 9:] = r[9]
+    stock_b64 = base64.b64encode(np.clip(st_arr, 0, 65535).astype(np.uint16).tobytes()).decode()
 
     store_out, health_out = [], []
     for i, r in store_rows.iterrows():
@@ -197,7 +224,8 @@ def main():
         "calib": calib, "mixKeys": mix_keys, "palette": palette, "bands": bands,
         "weights": C.ALLOC_DEFAULT_WEIGHTS, "alloc": C.ALLOC, "rosMax": demand.ROS_MAX,
         "newDays": C.NEW_SKU_DAYS, "nudgeDays": C.NUDGE_DAYS, "freshDays": C.FRESH_DAYS,
-        "words": list(words), "stores": store_out, "health": health_out, "skus": skus, "nb": nb_out, "stock": stock,
+        "words": list(words), "stores": store_out, "health": health_out, "skus": skus, "nb": nb_out, "nbVis": nb_vis, "nbMeta": nb_meta, "nbW": NB_W,
+        "packs": C.PACKS, "calibPct": C.SIM["calibration_percentile"], "stock": stock_b64, "stockW": 19,
         "nStores": len(st_bc),
         "proj": base64.b64encode(demand.pack_uint8(proj)).decode(),
         "evid": base64.b64encode(ev_packed.tobytes()).decode(), "evidW": int(ev_packed.shape[1]),
@@ -207,6 +235,8 @@ def main():
     with open(C.OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write(html)
     print("Built %s (%.1f MB) in %.0fs" % (C.OUTPUT_FILE, len(html) / 1e6, time.time() - t0))
+    if len(html.encode("utf-8")) > 24 * 1024 * 1024:     # Workers KV hard limit is 25 MiB per value
+        raise SystemExit("index.html is %.1f MB - over the 24 MB safety limit for Workers KV (25 MiB max)." % (len(html) / 1e6))
     publish(html)
 
 
