@@ -63,8 +63,11 @@ def calibrate_floor(vecs, soft, style):
 
 def search(products, skus, vecs):
     """products: DataFrame (one row per SKU), skus/vecs: embedded SKUs.
-    Returns {sku: [(cand_sku, final, visual, tier, boost, soft_matched_list, obvious, designs_match, print_match)]}
-    and per-category calibration info."""
+    Returns ({sku: [neighbour, ...]} by blended score, per-category calibration info,
+             {"visual": {...}, "meta": {...}} alternative orderings of the whole candidate pool) where
+    neighbour = (cand_sku, final, visual, tier, boost, soft_matched_list, obvious, designs_match, print_match).
+      visual = highest image similarity, ignoring tiers / floor
+      meta   = tightest tier first, then most soft-attribute matches, then image similarity"""
     p = products.set_index("SKU").loc[skus].reset_index()
     p["FIT_NORMALIZED"] = p["FIT"].map(fit_normalized)
     eligible = ((p["STATUS"].str.upper() == "ACTIVE") | p["FINAL_LIVE_DATE"].notna()).to_numpy()
@@ -77,7 +80,7 @@ def search(products, skus, vecs):
     damp, minv, topk, keep = S["soft_boost_damping"], S["min_visual"], S["top_k"], S["keep"]
     mult = np.array([0, *[S["tier_mult"][t] for t in (1, 2, 3, 4)]], np.float32)
 
-    out, calib = {}, {}
+    out, calib, alt = {}, {}, {"visual": {}, "meta": {}}
     for c in np.unique(cat):
         qi = np.where(cat == c)[0]
         ci = qi[eligible[qi]]
@@ -111,20 +114,29 @@ def search(products, skus, vecs):
                     accepted |= ok & (tier == t)
                     if accepted.sum() >= topk:
                         break
+                def pack(order):
+                    res = []
+                    for j in order:
+                        g = ci[j]
+                        res.append((sku_arr[g], round(float(sim[j] * mult[tier[j]] * (1 + damp * boost[j])), 4),
+                                    round(float(sim[j]), 4), int(tier[j]), round(float(boost[j]), 3),
+                                    [S["soft_attrs"][k] for k in np.where(match[j])[0]],
+                                    bool(style[g] == style[i]),
+                                    bool(designs[i] >= 0 and designs[g] == designs[i]),
+                                    bool(prnt[i] >= 0 and prnt[g] == prnt[i])))
+                    return res
+
+                others = ci != i
+                pool = np.where(others)[0]
+                if len(pool):
+                    top_v = pool[np.argsort(-sim[pool])[:topk]]
+                    top_m = pool[np.lexsort((-sim[pool], -boost[pool], tier[pool]))[:topk]]
+                    alt["visual"][sku_arr[i]] = pack(top_v)
+                    alt["meta"][sku_arr[i]] = pack(top_m)
                 idx = np.where(accepted)[0]
                 if len(idx) == 0:
                     out[sku_arr[i]] = []
                     continue
                 final = sim[idx] * mult[tier[idx]] * (1 + damp * boost[idx])
-                order = idx[np.argsort(-final)[:keep]]
-                res = []
-                for j in order:
-                    g = ci[j]
-                    res.append((sku_arr[g], round(float(sim[j] * mult[tier[j]] * (1 + damp * boost[j])), 4),
-                                round(float(sim[j]), 4), int(tier[j]), round(float(boost[j]), 3),
-                                [S["soft_attrs"][k] for k in np.where(match[j])[0]],
-                                bool(style[g] == style[i]),
-                                bool(designs[i] >= 0 and designs[g] == designs[i]),
-                                bool(prnt[i] >= 0 and prnt[g] == prnt[i])))
-                out[sku_arr[i]] = res
-    return out, calib
+                out[sku_arr[i]] = pack(idx[np.argsort(-final)[:keep]])
+    return out, calib, alt
