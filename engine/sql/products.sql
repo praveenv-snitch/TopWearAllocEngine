@@ -56,9 +56,11 @@ mech AS (
            MAX(OFFLINE_ALLOCATED_STATUS) OFFLINE_ALLOCATED_STATUS
     FROM SNITCH_DB.MAPLEMONK.SKU_LIVE_MECH_V2 GROUP BY 1
 ),
-offl AS (   -- offline history across all stores (exclusions applied)
+offl AS (   -- offline history across all stores (exclusions applied); lifetime = since data start (Jul 2023)
     SELECT UPPER(SKU_GROUP) s, MIN(ORDER_DATE) FIRST_OFFLINE_SALE, MAX(ORDER_DATE) LAST_OFFLINE_SALE,
-           SUM(COALESCE(SUBORDER_QUANTITY, 1)) OFFLINE_UNITS, COUNT(DISTINCT BRANCH_CODE) OFFLINE_STORES
+           SUM(COALESCE(SUBORDER_QUANTITY, 1)) OFFLINE_UNITS, COUNT(DISTINCT BRANCH_CODE) OFFLINE_STORES,
+           SUM(IFF(ORDER_DATE >= DATEADD(DAY, -30, CURRENT_DATE()), COALESCE(SUBORDER_QUANTITY, 1), 0)) OFFLINE_L30,
+           SUM(IFF(ORDER_DATE >= DATEADD(DAY, -90, CURRENT_DATE()), COALESCE(SUBORDER_QUANTITY, 1), 0)) OFFLINE_L90
     FROM SNITCH_DB.MAPLEMONK.STORE_FACT_ITEMS_OFFLINE
     WHERE COALESCE(DOC_PREFIX, '') NOT IN ({EXCL_DOC_PREFIX})
       AND MARKETPLACE_MAPPED NOT IN ({EXCL_MARKETPLACES})
@@ -66,10 +68,67 @@ offl AS (   -- offline history across all stores (exclusions applied)
       AND UPPER(SKU_GROUP) NOT LIKE 'CB%' AND UPPER(SKU_GROUP) NOT LIKE 'NT%'
     GROUP BY 1
 ),
-rtn AS (
+rtn AS (    -- customer returns made AT STORES only (the table is mostly online / WH / marketplace returns)
     SELECT UPPER(SKU_GROUP) s, SUM(COALESCE(SUBORDER_QUANTITY, 1)) OFFLINE_RETURNS
     FROM SNITCH_DB.MAPLEMONK.STORE_RETURNS_FACT_ITEMS
-    WHERE MARKETPLACE_MAPPED NOT IN ({EXCL_MARKETPLACES})
+    WHERE REGEXP_LIKE(UPPER(MARKETPLACE_MAPPED), '^SNITCH - (COCO|COFO|FOCO|FOFO|FICO) - .*')
+      AND COALESCE(TRY_TO_NUMBER(BRANCH_CODE), -1) NOT IN ({EXCL_BRANCHES})
+    GROUP BY 1
+),
+pp_helper AS (  -- prepack sets per zone x style at ONE depth per style: the depth with the most sets overall
+    SELECT z.zone, z.s, z.depth, z.sets
+    FROM (SELECT UPPER(WAREHOUSE_LOCATION) zone, UPPER(SKU_GROUP) s, PREPACK_DEPTH depth, SUM(PREPACK_SETS) sets
+          FROM SNITCH_DB.MAPLEMONK.PREPACKS_ALLOCATION_HELPER_V1 GROUP BY 1, 2, 3) z
+    JOIN (SELECT UPPER(SKU_GROUP) s, PREPACK_DEPTH depth
+          FROM SNITCH_DB.MAPLEMONK.PREPACKS_ALLOCATION_HELPER_V1 GROUP BY 1, 2
+          QUALIFY ROW_NUMBER() OVER (PARTITION BY s ORDER BY SUM(PREPACK_SETS) DESC, depth) = 1) d
+      ON d.s = z.s AND d.depth = z.depth
+),
+pp_codes AS (   -- live pack codes on hand: PP6-<style>-<colour>-<lot>... one row per physical pack
+    SELECT IFF(FACILITY = 'SAPL-NORTH-TAURU', 'NORTH', 'SOUTH') zone,
+           SPLIT_PART(REGEXP_REPLACE(UPPER(SKU), '-[^-]+$', ''), '-', 2) || '-' ||
+           SPLIT_PART(REGEXP_REPLACE(UPPER(SKU), '-[^-]+$', ''), '-', 3) s,
+           TRY_TO_NUMBER(REGEXP_SUBSTR(UPPER(SKU), '^PP([0-9]+)', 1, 1, 'e')) depth,
+           COUNT(DISTINCT UPPER(SKU)) codes
+    FROM SNITCH_DB.MAPLEMONK.LIVE_INV_WAREHOUSE_OFFLINE_REPLEN
+    WHERE UPPER(SKU) LIKE 'PP%'
+    GROUP BY 1, 2, 3
+),
+pp AS (         -- sendable packs = min(helper sets, live codes) per zone
+    SELECT h.s, ANY_VALUE(h.depth) PP_DEPTH,
+           SUM(IFF(h.zone = 'NORTH', LEAST(h.sets, COALESCE(c.codes, 0)), 0)) PP_N,
+           SUM(IFF(h.zone = 'SOUTH', LEAST(h.sets, COALESCE(c.codes, 0)), 0)) PP_S
+    FROM pp_helper h
+    LEFT JOIN pp_codes c ON c.zone = h.zone AND c.s = h.s AND c.depth = h.depth
+    GROUP BY 1
+),
+wh_sets AS (    -- full loose size sets the WH (N+S) can build, 1 unit kept back per size (IST local_wh_cut)
+    SELECT UPPER(SKU_GROUP) s,
+           CASE WHEN REGEXP_LIKE(UPPER(SKU_GROUP), '^(4MBG|4BRN|4BPL|4BTR|4BCH|4BJE|4BJK|4BSW|4BHD|4BOS|4BSHS|4BSFS|4BSH|4BBL|4BCA|4BSWT|4BCD|4BJO).*')
+                THEN GREATEST(LEAST(ROUND((SUM(XL3_UNITS)-1)/3), ROUND((SUM(XL4_UNITS)-1)/3),
+                                    ROUND((SUM(XL5_UNITS)-1)/2), ROUND((SUM(XL6_UNITS)-1)/2)), 0)
+                ELSE GREATEST(LEAST(ROUND((SUM(S_UNITS)-1)/3), ROUND((SUM(M_UNITS)-1)/4),
+                                    ROUND((SUM(L_UNITS)-1)/4), ROUND((SUM(XL_UNITS)-1)/3)), 0) END WH_SIZE_SETS
+    FROM SNITCH_DB.MAPLEMONK.AVAILABILITY_MASTER_V2_MERGED
+    WHERE SKU_GROUP NOT LIKE 'PP%' AND SKU_GROUP NOT LIKE '%_T'
+    GROUP BY 1
+),
+store_cut AS (  -- stores where the style is size-broken incl. JIT (store_replen_prepack cut rule)
+    SELECT UPPER(SKU_GROUP) s, COUNT(DISTINCT BRANCH_CODE) CUT_STORES
+    FROM (
+        SELECT SKU_GROUP, BRANCH_CODE,
+               IFF(COALESCE(XS_UNITS,0)+COALESCE(JIT_XS_UNITS,0)>0,1,0) xs, IFF(COALESCE(S_UNITS,0)+COALESCE(JIT_S_UNITS,0)>0,1,0) sz,
+               IFF(COALESCE(M_UNITS,0)+COALESCE(JIT_M_UNITS,0)>0,1,0) m,   IFF(COALESCE(L_UNITS,0)+COALESCE(JIT_L_UNITS,0)>0,1,0) l,
+               IFF(COALESCE(XL_UNITS,0)+COALESCE(JIT_XL_UNITS,0)>0,1,0) xl, IFF(COALESCE(XXL_UNITS,0)+COALESCE(JIT_2XL_UNITS,0)>0,1,0) xxl,
+               IFF(COALESCE(XL3_UNITS,0)+COALESCE(JIT_3XL_UNITS,0)>0,1,0) x3, IFF(COALESCE(XL4_UNITS,0)+COALESCE(JIT_4XL_UNITS,0)>0,1,0) x4,
+               IFF(COALESCE(XL5_UNITS,0)+COALESCE(JIT_5XL_UNITS,0)>0,1,0) x5, IFF(COALESCE(XL6_UNITS,0)+COALESCE(JIT_6XL_UNITS,0)>0,1,0) x6
+        FROM SNITCH_DB.MAPLEMONK.OFFLINE_MASTER
+        WHERE COALESCE(INVENTORY,0) + COALESCE(JIT_QTY,0) > 0
+          AND BRANCH_CODE NOT IN ({EXCL_BRANCHES}) AND MARKETPLACE_MAPPED NOT IN ({EXCL_MARKETPLACES})
+    )
+    WHERE IFF(REGEXP_LIKE(UPPER(SKU_GROUP), '^(4MBG|4BRN|4BPL|4BTR|4BCH|4BJE|4BJK|4BSW|4BHD|4BOS|4BSHS|4BSFS|4BSH|4BBL|4BCA|4BSWT|4BCD|4BJO).*'),
+              x3 + x4 + x5 + x6 < 3,
+              sz + m + l + xl < 3 OR xs + sz + m + l + xl + xxl < 4)
     GROUP BY 1
 )
 SELECT
@@ -91,7 +150,11 @@ SELECT
     mech.WH_LIVE_DATE, NULLIF(mech.FIRST_WH_INWARD, '9999-12-31') AS FIRST_WH_INWARD, mech.OFFLINE_ALLOCATED_STATUS,
     offl.FIRST_OFFLINE_SALE, offl.LAST_OFFLINE_SALE,
     COALESCE(offl.OFFLINE_UNITS, 0) OFFLINE_UNITS, COALESCE(offl.OFFLINE_STORES, 0) OFFLINE_STORES,
-    COALESCE(rtn.OFFLINE_RETURNS, 0) OFFLINE_RETURNS
+    COALESCE(offl.OFFLINE_L30, 0) OFFLINE_L30, COALESCE(offl.OFFLINE_L90, 0) OFFLINE_L90,
+    COALESCE(rtn.OFFLINE_RETURNS, 0) OFFLINE_RETURNS,
+    pp.PP_DEPTH, COALESCE(pp.PP_N, 0) PP_N, COALESCE(pp.PP_S, 0) PP_S,
+    COALESCE(ws.WH_SIZE_SETS, 0) WH_SIZE_SETS, COALESCE(sc.CUT_STORES, 0) CUT_STORES,
+    IFF(COALESCE(sc.CUT_STORES, 0) > 0 AND COALESCE(ws.WH_SIZE_SETS, 0) < 5, 1, 0) AS IS_NRC
 FROM prod p
 LEFT JOIN bp   ON bp.s = p.s
 LEFT JOIN av   ON av.s = p.s
@@ -100,4 +163,8 @@ LEFT JOIN wh   ON wh.s = p.s
 LEFT JOIN mech ON mech.s = p.s
 LEFT JOIN offl ON offl.s = p.s
 LEFT JOIN rtn  ON rtn.s = p.s
+LEFT JOIN pp   ON pp.s = p.s
+LEFT JOIN wh_sets ws ON ws.s = p.s
+LEFT JOIN store_cut sc ON sc.s = p.s
 WHERE p.CATEGORY_N IN ({CATS})
+  AND p.s NOT LIKE 'MP%'                 -- marketplace copies are excluded everywhere
