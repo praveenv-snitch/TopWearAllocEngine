@@ -73,6 +73,7 @@ def load():
 
 def prepare_products(p):
     p = p.drop_duplicates("SKU").reset_index(drop=True)
+    p = p[~p["SKU"].fillna("").str.upper().str.startswith(tuple(C.PLUS_EXCL_PREFIXES))].reset_index(drop=True)   # plus size out
     p["MIX_KEY"] = [C.mix_key(c, co, de, st) for c, co, de, st in zip(p["CATEGORY"], p["COLLAR_NEW"], p["DESIGNS"], p["STYLE"])]
     p["COLOUR"] = p["COLOR"].map(health.colour_name)
     p["PRICE_BAND"] = p["MRP"].map(lambda m: C.price_band(float(m or 0)))
@@ -88,6 +89,7 @@ def main():
     d = load()
     prods = prepare_products(d["products"])
     store_sku, stores = d["store_sku"], d["stores"]
+    store_sku = store_sku[~store_sku["SKU"].fillna("").str.upper().str.startswith(tuple(C.PLUS_EXCL_PREFIXES))]
     stores = stores[stores["CATEGORY"].isin(C.CATEGORIES)
                     & ~stores["STORE_NAME"].fillna("").str.upper().str.contains("WAREHOUSE|TEST|DUMMY")]
     # stores need a base stock and a mapped cluster to be planned (e.g. SNITCH - MAPLE - MYSURU has neither cluster)
