@@ -207,6 +207,8 @@ function gapsOf(G,si,c,ceil){const key=si*2+c;let g=G.get(key);if(g)return g;con
 // Fresh run (tab 2): AV_MASTER_HTMBASE fresh pool (store_avail.py): loose sizes after buffer, FULL_SIZE_OPTIONS (sets) and prepacks.
 // Every prepack sent carries a specific serial code that is on hand (LIVE_INV_WAREHOUSE_OFFLINE_REPLEN); codes are used once.
 const POOL=D.pool||{},PPC=D.ppCodes||{};
+// colour family = same style code, different colour (4MSS4407-01 / -02 / -03), the "obvious" siblings of the similarity tab
+const famOf=k=>K[k][0].split('-')[0],FAM=new Map();K.forEach((a,k)=>{const f=famOf(k);if(!FAM.has(f))FAM.set(f,[]);FAM.get(f).push(k)});
 const codesOf=(k,depth)=>{const c=(PPC[k]||{})[String(depth)];return c?[c[0].slice(),c[1].slice()]:[[],[]]};
 function placementPool(k){const a=K[k],c=codesOf(k,a[42]);
  return {src:'placement',depth:a[42],loose:[a[20].slice(),a[21].slice()],fso:null,packs:[Math.min(a[43],c[0].length),Math.min(a[44],c[1].length)],codes:c}}
@@ -267,6 +269,9 @@ function lineValue(f,line,type,g,w,maxStr,k,si){
 //  opts.fresh  -> use the fresh pool (AV_MASTER_HTMBASE) instead of the placement pool
 //  opts.budget -> Map(si*2+c -> units) replacing the fill-ceiling room (fresh run: 110% budget or manual units)
 //  opts.zone   -> 0 North / 1 South only (no fallback); opts.ftype -> 'fresh' never carried / 'repeat' carried before
+//  opts.maxColours -> colour-family rule: when a FRESH line of a style goes to a store, the other available colours of the
+//                  same style (in the SKU set) go with it, up to maxColours per style per store (Infinity = all), picked by
+//                  the store's colour gap. Family colours skip the demand bar and DOI check but never the budget / WH stock.
 function allocate(ks,sts,mode,cfg,w,opts){
  opts=opts||{};
  const ceil=(cfg.fill||140)/100,G=newGapState(),pools=new Map(),out=[];
@@ -284,16 +289,24 @@ function allocate(ks,sts,mode,cfg,w,opts){
   cand.push({k,si,f,type,has})}}
  const heap=[],push=x=>{heap.push(x);let i=heap.length-1;while(i){const p=(i-1)>>1;if(heap[p].v>=heap[i].v)break;[heap[p],heap[i]]=[heap[i],heap[p]];i=p}},
   pop=()=>{const t=heap[0],l=heap.pop();if(heap.length){heap[0]=l;let i=0;for(;;){const a=2*i+1,b=a+1;let m=i;if(a<heap.length&&heap[a].v>heap[m].v)m=a;if(b<heap.length&&heap[b].v>heap[m].v)m=b;if(m===i)break;[heap[m],heap[i]]=[heap[i],heap[m]];i=m}}return t};
- const evalC=x=>{const g=gaps(x.si,x.f.c);if(g.room<=0)return null;const line=buildLine(x.k,x.si,x.type,poolOf(x.k),x.f.p,cfg);if(!line)return null;
+ const maxC=opts.maxColours==null?Infinity:opts.maxColours,famSent=new Map(),ksSet=new Set(ks);
+ const famFull=(si,k)=>{const st=famSent.get(si+'|'+famOf(k));return st&&!st.has(k)&&st.size>=maxC};
+ const taken=new Set();        // one line per store x SKU (a family colour is never picked again by the greedy pass)
+ const evalC=x=>{if(taken.has(x.si*K.length+x.k))return null;const g=gaps(x.si,x.f.c);if(g.room<=0)return null;if(x.type==='FRESH'&&famFull(x.si,x.k))return null;const line=buildLine(x.k,x.si,x.type,poolOf(x.k),x.f.p,cfg);if(!line)return null;
   if(line.units>g.room){if(x.type==='FRESH'||line.packType==='PREPACK')return null;        // fresh sets and packs are never cut down
    line.split=line.split.map(v=>Math.floor(v*g.room/line.units));line.units=sum(line.split);if(!line.units)return null}
   const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0,maxDoi=S[x.si][10]||90;
-  if(x.f.p*maxDoi<0.5*(have+line.units)*(x.type==='FRESH'?0.5:1))return null;   // would sit far beyond the store's DOI cap
+  if(!x.force&&x.f.p*maxDoi<0.5*(have+line.units)*(x.type==='FRESH'?0.5:1))return null;   // would sit far beyond the store's DOI cap
+  // colour family: start a style at a store only if its other available colours (up to the cap) also fit the room,
+  // so the style goes complete; family colours themselves are committed right after (see commit)
+  if(x.type==='FRESH'&&!x.force&&!famSent.has(x.si+'|'+famOf(x.k))){let need=line.units,n=1;
+   for(const k2 of FAM.get(famOf(x.k))||[]){if(n>=maxC)break;if(k2===x.k||!ksSet.has(k2)||STOCK[x.si*K.length+k2]||taken.has(x.si*K.length+k2))continue;
+    if(opts.ftype&&((opts.ftype==='fresh')===REPEAT.has(x.si*K.length+k2)))continue;const p2=poolOf(k2);if(!p2)continue;
+    const l2=buildLine(k2,x.si,'FRESH',p2,0,cfg);if(l2){need+=l2.units;n++}}
+   if(need>g.room)return null}
   const val=lineValue(x.f,line,x.type,g,w,maxStr,x.k,x.si);return {line,val}};
  for(const x of cand){const e=evalC(x);if(e){x.v=e.val.s;push(x)}}
- while(heap.length){const x=pop(),e=evalC(x);if(!e)continue;
-  if(heap.length&&e.val.s<heap[0].v-1e-9){x.v=e.val.s;push(x);continue}          // stale: re-queue with its updated value
-  const {line,val}=e,pool=poolOf(x.k),g=gaps(x.si,x.f.c),before=poolUnits(pool,line.z);
+ const commit=(x,e)=>{taken.add(x.si*K.length+x.k);const {line,val}=e,pool=poolOf(x.k),g=gaps(x.si,x.f.c),before=poolUnits(pool,line.z);
   if(line.packType==='PREPACK'){pool.packs[line.z]-=line.packs;line.codes=pool.codes[line.z].splice(0,line.packs)}
   else{line.split.forEach((v,i)=>pool.loose[line.z][i]-=v);line.codes=[];if(x.type==='FRESH'&&pool.fso)pool.fso[line.z]--}
   // fulfilment check: every unit / code taken must have been on hand
@@ -303,7 +316,19 @@ function allocate(ks,sts,mode,cfg,w,opts){
   if(g.band[x.f.band]!==undefined)g.band[x.f.band]-=line.units;if(x.type==='FRESH')g.opt--;
   const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0;
   out.push({k:x.k,si:x.si,f:x.f,type:x.type,have,s:val.s,comp:val.c,sold:val.sold,gapBefore:snap,...line,availBefore:before,availAfter:poolUnits(pool,line.z),
-   doiNow:x.f.p>0?have/x.f.p:-1,doiAfter:x.f.p>0?(have+line.units)/x.f.p:-1})}
+   doiNow:x.f.p>0?have/x.f.p:-1,doiAfter:x.f.p>0?(have+line.units)/x.f.p:-1,family:!!x.force});
+  if(x.type!=='FRESH')return;
+  const fk=famOf(x.k),key=x.si+'|'+fk,sent=famSent.get(key)||new Set();sent.add(x.k);famSent.set(key,sent);
+  if(x.force)return;
+  // colour family: send the other available colours of this style to the same store, best colour gap first
+  const sibs=(FAM.get(fk)||[]).filter(k2=>k2!==x.k&&ksSet.has(k2)&&!sent.has(k2)&&!STOCK[x.si*K.length+k2]&&poolOf(k2)
+   &&!(opts.ftype&&((opts.ftype==='fresh')===REPEAT.has(x.si*K.length+k2))))
+   .map(k2=>({k:k2,si:x.si,f:storeFactors(x.si,k2),type:'FRESH',force:true})).filter(y=>y.f)
+   .sort((p,q)=>(gaps(x.si,q.f.c).col[q.f.colKey]||0)-(gaps(x.si,p.f.c).col[p.f.colKey]||0));
+  for(const y of sibs){if(sent.size>=maxC)break;const ey=evalC(y);if(ey)commit(y,ey)}};
+ while(heap.length){const x=pop(),e=evalC(x);if(!e)continue;
+  if(heap.length&&e.val.s<heap[0].v-1e-9){x.v=e.val.s;push(x);continue}          // stale: re-queue with its updated value
+  commit(x,e)}
  return out;
 }
 const ALLOC_TIPS={store:'Store name (excluded: no base stock or unmapped cluster)',sku:'SKU group allocated',type:'FRESH = store does not carry the SKU; REPLEN = store carries it and needs sizes / depth',
@@ -328,7 +353,7 @@ function allocTable(out,limit){
  ${th('Evidence',ALLOC_TIPS.ev)}${th('Have',ALLOC_TIPS.have,'n')}${th('DOI now → after',ALLOC_TIPS.doi,'n')}${th('DOI cap',ALLOC_TIPS.cap,'n')}${th('Store fill',ALLOC_TIPS.fill,'n')}${th('Store STR',ALLOC_TIPS.str,'n')}
  ${th('Mix gap',ALLOC_TIPS.mix,'n')}${th('Colour gap',ALLOC_TIPS.col,'n')}${th('Price gap',ALLOC_TIPS.price,'n')}</tr></thead><tbody>${shown.map(r=>{const a=K[r.k],s=S[r.si],h=r.f.h;
  return `<tr><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td><a href="#" onclick="showSku('${a[0]}');return false">${a[0]}</a></td><td>${esc(W[a[10]])}</td><td class="n">${f0(a[13])}</td>
- <td title="${r.type==='FRESH'?(REPEAT.has(r.si*K.length+r.k)?'Store carried this style before and has none now':'Store never carried this style'):'Store carries the style now'}">${r.type}${r.type==='FRESH'&&REPEAT.has(r.si*K.length+r.k)?' <span class="mut">· repeat</span>':''}</td><td>${r.packType==='PREPACK'?r.packs+' × PP'+r.depth:'loose'}</td><td class="n"><b>${r.units}</b></td><td class="sz">${szTxt(r.split)}</td><td class="sz">${r.codes&&r.codes.length?r.codes.map(esc).join('<br>'):'–'}</td>
+ <td title="${r.type==='FRESH'?(REPEAT.has(r.si*K.length+r.k)?'Store carried this style before and has none now':'Store never carried this style'):'Store carries the style now'}">${r.type}${r.type==='FRESH'&&REPEAT.has(r.si*K.length+r.k)?' <span class="mut">· repeat</span>':''}${r.family?' <span class="chip" title="Sent as another colour of a style already going to this store (colour-family rule)">colour family</span>':''}</td><td>${r.packType==='PREPACK'?r.packs+' × PP'+r.depth:'loose'}</td><td class="n"><b>${r.units}</b></td><td class="sz">${szTxt(r.split)}</td><td class="sz">${r.codes&&r.codes.length?r.codes.map(esc).join('<br>'):'–'}</td>
  <td>${r.z?'South':'North'}${r.fallback?' <span class="warn">(fallback)</span>':''}</td><td class="n" data-v="${r.availAfter}">${f0(r.availBefore)} → ${f0(r.availAfter)}</td><td class="${r.ok?'good':'bad'}">${r.ok?'✓':'✗'}</td><td class="n">${f2(r.s)}</td><td class="n">${f2(r.f.p)}</td><td class="n">${f1(r.f.p*30)}</td>
  <td class="mut" title="${esc(EVTIP[r.f.ev])}">${EVTXT[r.f.ev]}</td><td class="n">${r.have}</td><td class="n" data-v="${r.doiAfter}">${r.doiNow<0?'–':f0(r.doiNow)} → ${r.doiAfter<0?'–':f0(r.doiAfter)}</td><td class="n">${s[10]}</td>
  <td class="n ${h.fill>1.4?'bad':h.fill<.85?'good':''}">${pc(h.fill)}</td><td class="n">${pc(h.str)}</td>
@@ -336,10 +361,10 @@ function allocTable(out,limit){
  <td class="n ${r.f.priceGap>0?'good':''}" data-v="${r.f.priceGap}">${(r.f.priceGap*100).toFixed(1)}pp</td></tr>`}).join('')}</tbody></table>`}
 function downloadAlloc(out,name){
  const hdr=['BRANCH_CODE','STORE','CLUSTER','ZONE','SKU_GROUP','CATEGORY','PRODUCT_NAME','COLOUR','MRP','AGE_TAG','NRC','TYPE','PACK_TYPE','PREPACKS','PREPACK_DEPTH','PREPACK_CODES','UNITS',...SZ.map(z=>'QTY_'+z),
-  'WAREHOUSE','WH_AVAIL_BEFORE','WH_AVAIL_AFTER','FULFILLABLE','FALLBACK','SCORE','PROJ_ROS','PROJ_30D','EVIDENCE','STORE_STOCK_BEFORE','DOI_BEFORE','DOI_AFTER','STORE_FILL','STORE_STR','MIX_GAP_PP','COLOUR_GAP_PP','PRICE_GAP_PP'];
+  'WAREHOUSE','WH_AVAIL_BEFORE','WH_AVAIL_AFTER','FULFILLABLE','COLOUR_FAMILY','FALLBACK','SCORE','PROJ_ROS','PROJ_30D','EVIDENCE','STORE_STOCK_BEFORE','DOI_BEFORE','DOI_AFTER','STORE_FILL','STORE_STR','MIX_GAP_PP','COLOUR_GAP_PP','PRICE_GAP_PP'];
  const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
  const lines=[hdr.join(',')].concat(out.map(r=>{const a=K[r.k],s=S[r.si];return [s[0],s[1],s[6],s[5],a[0],CATS[a[1]],a[2],W[a[10]],a[13],AGE[a[22]],a[39]?'Y':'',r.type,r.packType,r.packs,r.depth||'',(r.codes||[]).join(' | '),r.units,...r.split,
-  r.z?'South':'North',r.availBefore,r.availAfter,r.ok?'Y':'N',r.fallback?'Y':'',r.s.toFixed(3),r.f.p.toFixed(3),(r.f.p*30).toFixed(1),EVTXT[r.f.ev],r.have,r.doiNow<0?'':r.doiNow.toFixed(0),r.doiAfter<0?'':r.doiAfter.toFixed(0),
+  r.z?'South':'North',r.availBefore,r.availAfter,r.ok?'Y':'N',r.family?'Y':'',r.fallback?'Y':'',r.s.toFixed(3),r.f.p.toFixed(3),(r.f.p*30).toFixed(1),EVTXT[r.f.ev],r.have,r.doiNow<0?'':r.doiNow.toFixed(0),r.doiAfter<0?'':r.doiAfter.toFixed(0),
   (r.f.h.fill*100).toFixed(0),(r.f.h.str*100).toFixed(0),(r.f.mixGap*100).toFixed(1),(r.f.colGap*100).toFixed(1),(r.f.priceGap*100).toFixed(1)].map(q).join(',')}));
  const blob=new Blob([lines.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
  el.href=u;el.download=name+'_'+new Date().toISOString().slice(0,10)+'.csv';el.click();URL.revokeObjectURL(u);
@@ -354,6 +379,7 @@ const HOW_ALLOC=`<div class="how"><b>How "Where to allocate" works (only the SKU
  <li><b>Projected demand.</b> For each store, the SKU's rate of sale is projected from the similar SKUs' sales at that store (weighted by similarity and recency), blended with its own history if any. "Evidence" shows how much history backs it.</li>
  <li><b>Pack rules.</b> ${PACK_RULES}</li>
  <li><b>Value of each store × SKU line.</b> Expected sell-through + how much of the store's gaps the line closes: metafield bucket, colour, price band (the nearest band counts half), options, category fill room, replen need. Weights are on the Allocation Engine tab.</li>
+ <li><b>Colour family.</b> A fresh line also sends the other colours of that style that are in this allocation (basket), best colour gap first, if the store has room.</li>
  <li><b>Greedy, best line first.</b> The highest-value line is taken; WH stock (zone, size, pack code) and that store's gaps are reduced, so a second navy SKU gets less credit for the same navy gap.</li>
  <li><b>Hard limits.</b> Own-zone WH first, then the other zone (fallback); category fill ceiling ${D.alloc.fill_ceiling}% of base × ideal mix; no line far beyond the store's DOI cap.</li></ol></div>`;
 const HOW_FRESH=`<div class="how"><b>How the fresh-pool run works (whole fresh pool, store by store)</b><ol>
@@ -361,6 +387,7 @@ const HOW_FRESH=`<div class="how"><b>How the fresh-pool run works (whole fresh p
  <li><b>Which stores.</b> The stores in scope (filtered stores, one store, or chosen clusters). In <b>Auto</b> a store qualifies only while its <b>fill after JIT + IST</b> is below ${Math.round(D.fresh.fill_budget*100)}% of base stock.</li>
  <li><b>How many units.</b> Auto: budget = ${Math.round(D.fresh.fill_budget*100)}% × base stock − net stock after JIT + IST (e.g. base 1,000 → 1,100 − 1,000 = 100 units). Net stock = inventory + JIT + IST in − ROS 7d × lead time − outward − IST given (STORE_CATEGORY_DELTA).
   The budget is split between Shirts and T-shirts by category gap (category base − category net stock), each category capped at ${Math.round(D.fresh.fill_budget*100)}% of its own category base. Manual: you set the units per store and Both (split by gap) or one category.</li>
+ <li><b>Colour family.</b> When a style goes fresh to a store, its other available colours (same style code, e.g. 4MSS4407-01 / -02) go to that store too — all of them, or up to "Colours per style" (SKU filters), picking the colours the store is shortest of. A style only starts at a store if the budget fits all those colours, so styles go complete; WH stock is still checked per colour.</li>
  <li><b>Pack rules.</b> Fresh only: exactly 2 coded prepacks, else one loose size set (S–XL complete) that uses one full size option of the zone.</li>
  <li><b>Best allocation.</b> Each store × SKU line is valued (expected sell-through + metafield, colour, price, option gaps + store freshness and target need) and the best line is taken first; WH stock, codes and the store's budget and gaps shrink, then the rest are re-valued. It stops when the budget, the pool or the demand runs out.</li></ol></div>`;
 
@@ -724,7 +751,7 @@ function budgets(sts){const m=new Map(),per=[];for(const si of sts){const b=fres
  if(b.cats[0])m.set(si*2,b.cats[0]);if(b.cats[1])m.set(si*2+1,b.cats[1])}return {m,per}}
 // fresh-run SKU filters (store_avail.py filters): warehouse, fresh / repeat, prepack, depth, allocation status, SKU,
 // style, design, sleeve, fit, collar, material, MRP range, live year. Each list shows only values left by the other filters.
-const RF={wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{}};let OPENMSX=null;
+const RF={wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{},maxCol:'all'};let OPENMSX=null;
 const RFDEF=[['status','Allocation status','stock',k=>W[POOL[k][0]]||'–'],['depth','Prepack depth','stock',k=>POOL[k][4]?String(POOL[k][4]):'no prepack'],
  ['style','Style','prod',k=>W[K[k][11]]||'–'],['design','Design','prod',k=>W[K[k][8]]||'–'],['sleeve','Sleeve','prod',k=>W[K[k][7]]||'–'],
  ['fit','Fit','prod',k=>W[K[k][5]]||'–'],['collar','Collar','prod',k=>W[K[k][4]]||'–'],['material','Material','prod',k=>W[K[k][6]]||'–'],
@@ -750,11 +777,13 @@ function renderRF(){
  document.getElementById('rfStock').innerHTML=radio('rfwh',[['all','All WH (allow fallback)','Own-zone WH first, then the other zone if the own zone has none'],['north','North WH','Only stock in the North WH'],['south','South WH','Only stock in the South WH']],RF.wh)
   +radio('rfft',[['all','Fresh + repeat','Any store with no stock / JIT of the SKU now'],['fresh','Fresh','Store never carried the style'],['repeat','Repeat','Store carried the style before, has none now']],RF.ftype)
   +`<label class="fi" title="Coded prepacks on hand for the SKU in the fresh pool">Prepack <select id="rfPP"><option value="">any</option><option value="yes" ${RF.prepack==='yes'?'selected':''}>available</option><option value="no" ${RF.prepack==='no'?'selected':''}>not available</option></select></label>`+g('stock');
- document.getElementById('rfProd').innerHTML=`<input id="rfSku" title="One or more SKU codes (or parts), separated by space or comma; press Enter" placeholder="SKU(s), e.g. 4MSS4407" value="${esc(RF.sku)}" style="width:200px">`+g('prod');
+ document.getElementById('rfProd').innerHTML=`<input id="rfSku" title="One or more SKU codes (or parts), separated by space or comma; press Enter" placeholder="SKU(s), e.g. 4MSS4407" value="${esc(RF.sku)}" style="width:200px">`
+  +`<label class="fi" title="When a style goes to a store, its other available colours go with it. All = every available colour; a number caps the colours per style per store, chosen by the store's colour gap">Colours per style <select id="rfMaxCol">${['all',1,2,3,4,5,6,8].map(v=>`<option value="${v}" ${String(v)===String(RF.maxCol)?'selected':''}>${v==='all'?'all available':v==1?'1 (no family)':'max '+v}</option>`).join('')}</select></label>`+g('prod');
  document.getElementById('rfPrice').innerHTML=`<label class="fi">MRP ₹ <input id="rfMin" type="number" min="0" placeholder="min" value="${RF.mrpMin}" style="width:80px"> – <input id="rfMax" type="number" min="0" placeholder="max" value="${RF.mrpMax}" style="width:80px"></label>`+g('price');
  const root=document.getElementById('t-alloc');
  wireRadio(root,'rfwh',v=>{RF.wh=v;renderRF()});wireRadio(root,'rfft',v=>{RF.ftype=v;renderRF()});
  document.getElementById('rfPP').onchange=e=>{RF.prepack=e.target.value;renderRF()};
+ document.getElementById('rfMaxCol').onchange=e=>{RF.maxCol=e.target.value;renderRF()};
  document.getElementById('rfSku').onchange=e=>{RF.sku=e.target.value.trim();renderRF()};
  document.getElementById('rfMin').onchange=e=>{RF.mrpMin=e.target.value;renderRF()};document.getElementById('rfMax').onchange=e=>{RF.mrpMax=e.target.value;renderRF()};
  root.querySelectorAll('.msx').forEach(m=>{const id=m.dataset.id;
@@ -765,13 +794,13 @@ function renderRF(){
  document.getElementById('rfCount').textContent=`${f0(poolSkus().length)} of ${f0(base.length)} fresh-pool SKUs match`;
  runPreview()}
 document.addEventListener('click',e=>{document.querySelectorAll('.msx.open').forEach(m=>{if(!m.contains(e.target)){m.classList.remove('open');OPENMSX=null}})});
-document.getElementById('rfClear').onclick=e=>{e.preventDefault();Object.assign(RF,{wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{}});OPENMSX=null;renderRF()};
+document.getElementById('rfClear').onclick=e=>{e.preventDefault();Object.assign(RF,{wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{},maxCol:'all'});OPENMSX=null;renderRF()};
 function runPreview(){const el=document.getElementById('aPreview');if(!el)return;const sts=scopeStores(),{per}=budgets(sts),q=per.filter(x=>sum(x[1].cats)>0);
  el.textContent=sts.length?`${sts.length} stores in scope · ${q.length} get fresh units · budget ${f0(sum(q.map(x=>sum(x[1].cats))))} units · ${poolSkus().length} fresh-pool SKUs`:'Pick the stores to run for.'}
 let LAST=[],LASTPER=[];
 document.getElementById('aRun').onclick=()=>{
  const t0=performance.now(),sts=scopeStores(),{m,per}=budgets(sts),use=per.filter(x=>sum(x[1].cats)>0).map(x=>x[0]),ks=poolSkus();
- const out=use.length?allocate(ks,use,'fresh',cfgNow(),weights(),{fresh:true,budget:m,zone:RF.wh==='all'?null:RF.wh==='north'?0:1,ftype:RF.ftype==='all'?null:RF.ftype}):[];
+ const out=use.length?allocate(ks,use,'fresh',cfgNow(),weights(),{fresh:true,budget:m,zone:RF.wh==='all'?null:RF.wh==='north'?0:1,ftype:RF.ftype==='all'?null:RF.ftype,maxColours:RF.maxCol==='all'?Infinity:+RF.maxCol}):[];
  LAST=out;LASTPER=per;renderAlloc(out,ks,sts,per,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;
 };
 function renderAlloc(out,ks,sts,per,ms){
