@@ -35,8 +35,9 @@ EXCL_MARKETPLACES = ("'SNITCH - WH - EMIZA','SNITCH - WH - SR','SNITCH - WH - YE
 EXCL_DOC_PREFIX = "'OMS','QCOM'"
 
 
-# Plus-size styles are planned separately and kept out of this engine everywhere (shirts 4BSFS / 4MBGS, T-shirts 4BRN / 4BPL)
-PLUS_EXCL_PREFIXES = ["4BSFS", "4MBGS", "4BRN", "4BPL"]
+# Plus-size styles are planned separately and kept out of this engine everywhere
+# (shirts 4BSFS / 4MBGS / 4BSHS half sleeve, T-shirts 4BRN / 4BPL)
+PLUS_EXCL_PREFIXES = ["4BSFS", "4MBGS", "4BSHS", "4BRN", "4BPL"]
 
 
 def plus_excl(col):
