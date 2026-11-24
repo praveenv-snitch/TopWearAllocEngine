@@ -17,7 +17,7 @@ import pytz
 
 from engine import config as C, demand, embeddings, health, similarity
 
-DATASETS = ["products", "store_sku", "stores", "ideal_mix", "size_sales", "b2b"]
+DATASETS = ["products", "store_sku", "stores", "ideal_mix", "size_sales", "b2b", "fresh_pool", "pp_codes"]
 TEMPLATE = Path(__file__).resolve().parent.parent / "web" / "template.html"
 IMG_PREFIX = "https://cdn.shopify.com/s/files/1/0420/7073/7058/files/"
 
@@ -119,7 +119,9 @@ def main():
     # ---- demand projection targets: WH stock, never sold offline, or recently inwarded
     wh_tot = prods["WH_N"].fillna(0) + prods["WH_S"].fillna(0)
     recent_inw = pd.to_datetime(prods["WH_LIVE_DATE"], errors="coerce") >= pd.Timestamp.today() - pd.Timedelta(days=60)
-    tmask = ((wh_tot > 0) | (prods["AGE_TAG"] == 0) | recent_inw) & prods["SKU"].isin(nbrs)
+    fp = d.get("fresh_pool", pd.DataFrame(columns=["SKU"]))
+    in_pool = prods["SKU"].isin(set(fp["SKU"]))
+    tmask = ((wh_tot > 0) | (prods["AGE_TAG"] == 0) | recent_inw | in_pool) & prods["SKU"].isin(nbrs)
     targets = prods.loc[tmask, "SKU"].tolist()
     print("Demand projection for %d SKUs x %d stores..." % (len(targets), len(st_bc)))
     proj, evid, _, _ = demand.build(prods, store_sku, st_bc, nbrs, targets,
@@ -210,11 +212,51 @@ def main():
             st_arr[j, 9:] = r[9]
     stock_b64 = base64.b64encode(np.clip(st_arr, 0, 65535).astype(np.uint16).tobytes()).decode()
 
+    # ---- fresh pool (AV_MASTER_HTMBASE, store_avail.py) + prepack serial codes on hand
+    #  codes[k] = {depth: [north codes, south codes]}; a serial code is one sealed pack and is used once
+    codes = {}
+    for r in d.get("pp_codes", pd.DataFrame(columns=["SKU"])).itertuples():
+        k = ki.get(r.SKU)
+        if k is None or not _i(r.DEPTH):
+            continue
+        z = 0 if r.ZONE == "NORTH" else 1
+        codes.setdefault(k, {}).setdefault(str(_i(r.DEPTH)), [[], []])[z].append(r.CODE)
+    for v in codes.values():
+        for lst in v.values():
+            lst[0].sort(), lst[1].sort()
+    #  pool[k] = [status word, [fso N, fso S], [sizes N], [sizes S], depth, [packs N, packs S]]; packs = min(sets, codes)
+    pool = {}
+    for r in fp.itertuples():
+        k = ki.get(r.SKU)
+        if k is None:
+            continue
+        z = 0 if r.ZONE == "NORTH" else 1
+        e = pool.setdefault(k, [w(r.ALLOCATION_STATUS), [0, 0], [0] * 10, [0] * 10, 0, [0, 0]])
+        e[1][z] = _i(r.FSO)
+        e[1 + 1 + z] = [_i(getattr(r, c)) for c in ("XS", "S", "M", "L", "XL", "XXL", "XL3", "XL4", "XL5", "XL6")]
+        dp = _i(r.PP_DEPTH)
+        if dp and _i(r.PP_SETS):
+            e[4] = e[4] or dp
+            if e[4] == dp:
+                e[5][z] = min(_i(r.PP_SETS), len(codes.get(k, {}).get(str(dp), [[], []])[z]))
+    print("  fresh pool: %d SKUs in catalogue (%d rows; %d not in METAFIELDS skipped)"
+          % (len(pool), len(fp), fp.loc[~fp["SKU"].isin(ki), "SKU"].nunique()))
+    # only ship codes that can be used: the fresh-pool depth and the placement (helper) depth
+    used = {}
+    for k, v in codes.items():
+        keep = {str(skus[k][42]), str(pool[k][4]) if k in pool else ""}
+        v = {dp: x for dp, x in v.items() if dp in keep}
+        if v:
+            used[k] = v
+
     store_out, health_out = [], []
     for i, r in store_rows.iterrows():
         store_out.append([int(r.BC), _s(r.STORE_NAME), _s(r.STORE_TYPE), _s(r.STATE), _s(r.CITY),
                           _s(r.ZONE) or "UNMAPPED", _s(r.CLUSTER) or "UNMAPPED", _s(r.CITY_CLUSTER),
-                          _i(r.CARPET_AREA), _i(r.BASE_STOCK), _i(r.MAX_DOI), _i(r.APPAREL_INV)])
+                          _i(r.CARPET_AREA), _i(r.BASE_STOCK), _i(r.MAX_DOI), _i(r.APPAREL_INV),
+                          # 12 store base (delta), 13 store inventory, 14 net after JIT, 15 net after IST (all categories)
+                          _i(r.S_BASE) or _i(r.BASE_STOCK), _i(r.S_INV), _i(r.S_NET_JIT), _i(r.S_NET_IST),
+                          1 if r.S_NET_IST == r.S_NET_IST and r.S_NET_IST is not None else 0])
         health_out.append([hl.get((int(r.BC), c)) for c in cats])
 
     payload = {
@@ -225,7 +267,8 @@ def main():
         "weights": C.ALLOC_DEFAULT_WEIGHTS, "alloc": C.ALLOC, "rosMax": demand.ROS_MAX,
         "newDays": C.NEW_SKU_DAYS, "nudgeDays": C.NUDGE_DAYS, "freshDays": C.FRESH_DAYS,
         "words": list(words), "stores": store_out, "health": health_out, "skus": skus, "nb": nb_out, "nbVis": nb_vis, "nbMeta": nb_meta, "nbW": NB_W,
-        "packs": C.PACKS, "calibPct": C.SIM["calibration_percentile"], "stock": stock_b64, "stockW": 19,
+        "packs": C.PACKS, "pool": {str(k): v for k, v in pool.items()}, "ppCodes": {str(k): v for k, v in used.items()},
+        "fresh": C.FRESH_RUN, "calibPct": C.SIM["calibration_percentile"], "stock": stock_b64, "stockW": 19,
         "nStores": len(st_bc),
         "proj": base64.b64encode(demand.pack_uint8(proj)).decode(),
         "evid": base64.b64encode(ev_packed.tobytes()).decode(), "evidW": int(ev_packed.shape[1]),
