@@ -78,6 +78,8 @@ th[title]{text-decoration:underline dotted;text-underline-offset:3px}
 .fgrp{display:flex;gap:10px;align-items:flex-start;padding:5px 0;border-top:1px dashed var(--line)}.fgrp .fl{width:105px;flex:none;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding-top:7px}
 .fgrid{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.fgrid label.fi{display:inline-flex;gap:5px;align-items:center;color:var(--mut);font-size:12px}
 .msx .dd{min-width:240px}.msx button.on{border-color:var(--acc);color:var(--acc);background:#f5f8ff}
+.wbox>summary{cursor:pointer;list-style:none;margin-bottom:0}.wbox>summary::-webkit-details-marker{display:none}
+.wbox>summary h3::before{content:'▸ ';color:var(--mut)}.wbox[open]>summary h3::before{content:'▾ '}.wbox[open]>summary{margin-bottom:6px}
 .wexp{margin:4px 0 8px}.wexp summary{cursor:pointer;color:var(--acc);font-size:12px}.wexp .how{font-size:12px}.wexp table{width:auto;margin-top:6px}
 .seg{display:flex;gap:8px;align-items:center;margin-bottom:12px}
 .how{background:#f8f9fb;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}.how ol{margin:4px 0 0 18px;padding:0}
@@ -121,9 +123,10 @@ th[title]{text-decoration:underline dotted;text-underline-offset:3px}
    <div class="fgrp"><span class="fl">Stock</span><div class="fgrid" id="rfStock"></div></div>
    <div class="fgrp"><span class="fl">Product</span><div class="fgrid" id="rfProd"></div></div>
    <div class="fgrp"><span class="fl">Price &amp; launch</span><div class="fgrid" id="rfPrice"></div></div></div>
-  <div class="fbox"><div class="fhead"><h3 style="margin:0">6 · Weights <span class="mut" style="text-transform:none">(what the engine prefers; defaults are recommended)</span></h3><a href="#" id="wReset">reset to defaults</a></div>
+  <details class="fbox wbox"><summary class="fhead"><h3 style="margin:0">6 · Weights <span class="mut" style="text-transform:none">(optional · what the engine prefers; defaults are recommended — click to adjust)</span></h3></summary>
+   <div style="text-align:right;margin:-2px 0 4px"><a href="#" id="wReset">reset to defaults</a></div>
    <details class="wexp"><summary>What are weights? (simple explanation with an example)</summary><div id="wExplain"></div></details>
-   <div class="wt" id="wts"></div></div>
+   <div class="wt" id="wts"></div></details>
   <div class="filters" style="margin-top:10px"><button class="b p" id="aRun">Run fresh allocation</button><button class="b" id="aCsv" disabled>Download CSV</button><span class="hint" id="aPreview"></span></div>
   <div id="allocSum" style="margin-top:10px"></div><div class="scroll" id="allocTbl"></div></div>
 </section>
