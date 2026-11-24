@@ -66,6 +66,10 @@ details.ex{border:1px solid var(--line);border-radius:10px;background:#fff;paddi
 .basket{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.basket .item{background:#eef2ff;border-radius:14px;padding:3px 6px 3px 10px;display:inline-flex;gap:6px;align-items:center}
 .basket .item button{border:0;background:#c7d2fe;border-radius:50%;width:18px;height:18px;cursor:pointer;line-height:18px;padding:0}
 th[title]{text-decoration:underline dotted;text-underline-offset:3px}
+.runbox{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:10px 0}.runbox>div{background:#f8f9fb;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.runbox h3{margin:0 0 6px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0;font-size:12px}
+.st-pend{background:#fee2e2;color:#991b1b}.st-new{background:#fef3c7;color:#92400e}.st-done{background:#dcfce7;color:#166534}.st-none{background:#f1f5f9;color:#475569}
+.mini2 th{position:static;cursor:default}
 .how{background:#f8f9fb;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}.how ol{margin:4px 0 0 18px;padding:0}
 </style></head><body>
 <header><h1>Snitch TopWear Allocation Engine</h1><span class="built" id="built"></span>
@@ -84,20 +88,22 @@ th[title]{text-decoration:underline dotted;text-underline-offset:3px}
 </section>
 <!-- ================= TAB 2 ================= -->
 <section class="tab" id="t-alloc">
- <div class="card"><div class="filters" id="f2"></div></div>
- <div class="card"><h2>Store health</h2><div class="hint">Click a store for mix, colour, price, size, cut and freshness detail. Fill = category stock ÷ (base stock × ideal category mix). Stores without a base stock or a mapped cluster are excluded.</div>
+ <div class="card"><div class="filters" id="f2"></div><div class="hint" id="fNote" style="margin-top:6px"></div></div>
+ <div class="card"><h2>Store health</h2><div class="hint">Click a store row (or pick exactly one store in the Stores filter) to open its detail. Hover a column header for its formula.
+  Net stock after JIT / IST comes from STORE_CATEGORY_DELTA (size_category_meta_delta_offline). Stores without a base stock or a mapped cluster are excluded.</div>
   <div class="scroll" id="healthTbl"></div></div>
  <div id="storeDetail"></div>
- <div class="card"><h2>Allocation run</h2>
-  <div class="hint">All WH-available SKUs that pass the filters × the filtered stores, with the same pack rules and gap logic as "Where to allocate".</div>
-  <details><summary class="mut" style="cursor:pointer">How the allocation works</summary><div id="howAlloc"></div></details>
-  <h3>Weights (hover for meaning)</h3><div class="wt" id="wts"></div>
-  <div class="filters" style="margin-top:10px">
-   <label title="Days of projected sales a line should cover">Days of cover <input id="aCover" type="number" style="width:60px"></label>
-   <label title="Max category stock after allocation, % of base stock × ideal category mix">Fill ceiling % <input id="aFill" type="number" style="width:60px"></label>
-   <label>Mode <select id="aMode"><option value="auto">Auto (fresh + replen)</option><option value="fresh">Fresh only</option><option value="replen">Replen only</option></select></label>
-   <button class="b p" id="aRun">Run allocation</button><button class="b" id="aCsv" disabled>Download CSV</button>
+ <div class="card"><h2>Fresh allocation run</h2>
+  <div class="hint">Runs over the whole fresh pool (Shirts + T-shirts in AV_MASTER_HTMBASE) for the stores in scope and picks the best fresh lines automatically. Different from "Where to allocate" on the SKU tab, which allocates only the searched / basket SKUs.</div>
+  <details><summary class="mut" style="cursor:pointer">How the fresh-pool run works</summary><div id="howAlloc"></div></details>
+  <div class="runbox">
+   <div><h3>1 · Stores</h3><div id="rScope"></div><div id="rScopeSel" style="margin-top:6px"></div></div>
+   <div><h3>2 · Units</h3><div id="rUnits"></div><div id="rUnitsSel" style="margin-top:6px"></div></div>
+   <div><h3>3 · Category</h3><div id="rCat"></div></div>
+   <div><h3>4 · Cover</h3><label title="Days of projected sales a line should cover; also the demand bar a fresh line must clear">Days of cover <input id="aCover" type="number" style="width:60px"></label></div>
   </div>
+  <h3>Weights <span class="mut" style="text-transform:none">(defaults are the recommended values; hover each for its meaning)</span> <a href="#" id="wReset" style="text-transform:none">reset to defaults</a></h3><div class="wt" id="wts"></div>
+  <div class="filters" style="margin-top:10px"><button class="b p" id="aRun">Run fresh allocation</button><button class="b" id="aCsv" disabled>Download CSV</button><span class="hint" id="aPreview"></span></div>
   <div id="allocSum" style="margin-top:10px"></div><div class="scroll" id="allocTbl"></div></div>
 </section>
 <!-- ================= TAB 3 ================= -->
@@ -134,6 +140,7 @@ const daysSince=d=>d?Math.floor((Date.now()-new Date(d+'T00:00:00'))/864e5):-1;
 const AGE=['NEW','RECENT','OLD'], AGEDESC=['never sold offline','first offline sale within '+D.newDays+' days','established offline history'];
 const PLUS_RE=/^(4MBG|4BRN|4BPL|4BTR|4BCH|4BJE|4BJK|4BSW|4BHD|4BOS|4BSHS|4BSFS|4BSH|4BBL|4BCA|4BSWT|4BCD|4BJO)/;
 const sum=a=>a.reduce((p,q)=>p+q,0);
+const DAYFRAC=(()=>{const t=new Date(Date.now()-864e5);return t.getDate()/new Date(t.getFullYear(),t.getMonth()+1,0).getDate()})();   // month elapsed to yesterday
 document.getElementById('built').textContent='Data as of '+D.built;
 if(D.fake)document.getElementById('fakeBanner').style.display='block';
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.tab').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('t-'+b.dataset.t).classList.add('on')});
@@ -152,8 +159,10 @@ function storeFactors(si,k){
  const colKey=(D.palette[CATS[c]]||[]).includes(col)?col:'Other';
  const m=h.mix[mk]||[0,0],cl=h.col[colKey]||[0,0],bd=h.band[band]||[0,0];
  const tgt=h.target>0?h.actual/h.target:1;
+ // behind target: category achievement (FACT_PARETO, monthly) vs the share of the month gone; store MTD if no category target
+ const tGap=h.catTarget>0&&DAYFRAC>0?clamp(DAYFRAC-h.catTargetPct/100,0,1)/DAYFRAC:1-tgt;
  return {h,c,p:proj(k,si),ev:evid(k,si),mk,colKey,band,mixGap:m[0]-m[1],colGap:cl[0]-cl[1],priceGap:bd[0]-bd[1],
-  optGap:h.idealOpts?(h.idealOpts-h.opts)/h.idealOpts:0,fillGap:h.fill<0?0:1-h.fill,freshNeed:1-h.fresh,targetGap:1-tgt,str:h.str};
+  optGap:h.idealOpts?(h.idealOpts-h.opts)/h.idealOpts:0,fillGap:h.fill<0?0:1-h.fill,freshNeed:1-h.fresh,targetGap:tGap,str:h.str};
 }
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const fillRoom=(si,c,ceil)=>{const h=D.health[si][c];return h&&h.base?Math.floor(h.base*ceil-h.stock):0};
@@ -170,77 +179,104 @@ function gapsOf(G,si,c,ceil){const key=si*2+c;let g=G.get(key);if(g)return g;con
   for(const x in h.band)g.band[x]=(h.band[x][0]-h.band[x][1])*B}
  G.set(key,g);return g}
 
-// Pack builder: what one store x SKU line would be, given the remaining WH pools.
-//  FRESH  (store doesn't carry it):  prepack -> up to 2 whole packs;  loose -> one size set (XS1 S2 M3 L3 XL2 XXL1, plus: 3XL-6XL)
-//  REPLEN (store carries it):        prepack -> 1 or 2 whole packs;   loose -> only the sizes short of a full set / 30-day need
-//  Prepacks are used first when the zone has them; sizes the WH doesn't have are skipped, never substituted.
+// ---------------------------------------------------------------- WH pools
+// Placement (tab 1): AVAILABILITY_MASTER_V2_MERGED loose sizes + helper prepacks (PREPACKS_ALLOCATION_HELPER_V1 ∩ live codes).
+// Fresh run (tab 2): AV_MASTER_HTMBASE fresh pool (store_avail.py): loose sizes after buffer, FULL_SIZE_OPTIONS (sets) and prepacks.
+// Every prepack sent carries a specific serial code that is on hand (LIVE_INV_WAREHOUSE_OFFLINE_REPLEN); codes are used once.
+const POOL=D.pool||{},PPC=D.ppCodes||{};
+const codesOf=(k,depth)=>{const c=(PPC[k]||{})[String(depth)];return c?[c[0].slice(),c[1].slice()]:[[],[]]};
+function placementPool(k){const a=K[k],c=codesOf(k,a[42]);
+ return {src:'placement',depth:a[42],loose:[a[20].slice(),a[21].slice()],fso:null,packs:[Math.min(a[43],c[0].length),Math.min(a[44],c[1].length)],codes:c}}
+function freshPool(k){const p=POOL[k];if(!p)return null;const c=codesOf(k,p[4]);
+ return {src:'fresh',depth:p[4],loose:[p[2].slice(),p[3].slice()],fso:p[1].slice(),packs:[Math.min(p[5][0],c[0].length),Math.min(p[5][1],c[1].length)],codes:c,status:W[p[0]]}}
+const poolUnits=(pl,z)=>sum(pl.loose[z])+pl.packs[z]*(pl.depth||0);
+
+// Pack builder: what one store x SKU line would be, given the remaining WH pool.
+//  FRESH  (store doesn't carry it): exactly 2 prepacks (only if the zone has 2 coded packs), else one loose size set
+//         XS1 S2 M3 L3 XL2 XXL1 (plus styles: 3XL-6XL) with S-XL complete; in the fresh pool a set also needs a FULL_SIZE_OPTION.
+//  REPLEN (store carries it): per-size need = max(set qty, projected need x store size curve) - store stock, max 6 a size.
+//         Prepacks (store_replen_prepack rule): packs = max over sizes of ceil(need ÷ units of that size in a pack),
+//         capped at 1 for packs of 10+ units (else 2), +1 if any size needs 5+, never more than 2. Otherwise loose sizes.
+//  Own-zone WH first, then the other zone (fallback). Sizes the WH doesn't have are skipped, never substituted.
+function replenNeed(k,si,p,cfg){
+ const a=K[k],st=STOCK[si*K.length+k],plus=PLUS_RE.test(a[0]),set=plus?D.packs.fresh_set_plus:D.packs.fresh_set;
+ const h=D.health[si][a[1]],curve=h&&h.size[0].some(x=>x>0)?h.size[0]:set.map(x=>x/sum(set)),have=st&&st[9]?st[9]:Array(10).fill(0);
+ const want=Math.ceil(p*cfg.cover);
+ return set.map((x,i)=>{if(!x&&!curve[i])return 0;const tgt=Math.max(x,Math.round(want*curve[i]));return Math.min(6,Math.max(0,tgt-have[i]))})}
 function buildLine(k,si,type,pool,p,cfg){
- const a=K[k],st=STOCK[si*K.length+k],plus=PLUS_RE.test(a[0]),depth=a[42],ratio=depth?D.packs.prepack[String(depth)]:null;
- const pref=zoneWh(S[si][5]),order=pref<0?((sum(pool.loose[0])+pool.packs[0]*(depth||0))>=(sum(pool.loose[1])+pool.packs[1]*(depth||0))?[0,1]:[1,0]):[pref,1-pref];
- const haveSz=st&&st[9]?st[9]:Array(10).fill(0),have=st?st[2]+st[7]:0;
+ const a=K[k],plus=PLUS_RE.test(a[0]),depth=pool.depth,ratio=depth?D.packs.prepack[String(depth)]:null;
+ const pref=zoneWh(S[si][5]),order=pref<0?(poolUnits(pool,0)>=poolUnits(pool,1)?[0,1]:[1,0]):[pref,1-pref];
+ const need=type==='REPLEN'?replenNeed(k,si,p,cfg):null;
  for(const z of order){
-  // ---- prepacks first
   if(ratio&&pool.packs[z]>0){
-   let n;
-   if(type==='FRESH')n=Math.min(D.packs.fresh_prepacks,pool.packs[z]);
-   else{const need=Math.max(Math.ceil(p*cfg.cover)-have,0);n=need>=depth*1.5?2:need>0||(st&&st[6])?1:0;n=Math.min(n,D.packs.replen_prepacks_max,pool.packs[z])}
+   let n=0;
+   if(type==='FRESH')n=pool.packs[z]>=D.packs.fresh_prepacks?D.packs.fresh_prepacks:0;           // strictly 2, never 1
+   else if(sum(need)>0){n=Math.max(...need.map((x,i)=>ratio[i]?Math.ceil(x/ratio[i]):0));
+    n=Math.min(n,depth>=10?1:2);if(need.some(x=>x>=5))n++;n=Math.min(n,D.packs.replen_prepacks_max,pool.packs[z])}
    if(n>0)return {z,fallback:pref>=0&&z!==pref,packType:'PREPACK',packs:n,depth,split:ratio.map(x=>x*n),units:n*depth};
   }
-  // ---- loose
   const L=pool.loose[z];if(!sum(L))continue;let split;
-  if(type==='FRESH'){const set=plus?D.packs.fresh_set_plus:D.packs.fresh_set;split=set.map((x,i)=>Math.min(x,L[i]));
-   // a fresh set must be complete in the core sizes: S M L XL in full (XS / XXL only if available); plus: 3 of 3XL-6XL
+  if(type==='FRESH'){
+   if(pool.fso&&pool.fso[z]<=0)continue;                                   // fresh pool: no full size option left in this zone
+   const set=plus?D.packs.fresh_set_plus:D.packs.fresh_set;split=set.map((x,i)=>Math.min(x,L[i]));
    if(plus?[6,7,8,9].filter(i=>split[i]>=set[i]).length<3:[1,2,3,4].some(i=>split[i]<set[i]))continue}
-  else{const set=plus?D.packs.fresh_set_plus:D.packs.fresh_set,h=D.health[si][a[1]],curve=h&&h.size[0].some(x=>x>0)?h.size[0]:set.map(x=>x/sum(set));
-   const want=Math.ceil(p*cfg.cover);split=set.map((x,i)=>{const tgt=Math.max(x,Math.round(want*curve[i]));return Math.max(0,Math.min(tgt-haveSz[i],L[i]))});
-   if(!sum(split))continue}
+  else{split=need.map((x,i)=>Math.min(x,L[i]));if(!sum(split))continue}
   return {z,fallback:pref>=0&&z!==pref,packType:'LOOSE',packs:0,depth:0,split,units:sum(split)};
  }
  return null;
 }
 
 // Value of a line = expected sell-through + share of each store gap it closes (weights from the Allocation tab).
-function lineValue(f,line,type,g,w,maxStr){
+function lineValue(f,line,type,g,w,maxStr,k,si){
  const u=line.units,sold=Math.min(u,f.p*D.alloc.days_cover);
  const take=(v)=>v>0?Math.min(v,u)/u:0;
  let price=take(g.band[f.band]);
  if(price===0){const bi=bandIdx(f.band);for(const d of [-1,1]){const b=D.bands[bi+d];if(b&&g.band[b]>0)price=Math.max(price,0.5*take(g.band[b]))}}   // nearest price tier
+ let rn=0;if(type==='REPLEN'){const st=STOCK[si*K.length+k],have=st?st[2]+st[7]:0;
+  rn=st&&st[6]?1:f.p>0?clamp(1-(have/f.p)/D.alloc.days_cover,0,1):0}         // size-broken = 1; fast seller = how far below 30 days of cover
  const c={ros:sold/u,str:maxStr?f.str/maxStr:0,mix_gap:take(g.mix[f.mk]),colour_gap:take(g.col[f.colKey]),price_gap:price,
-  option_gap:type==='FRESH'&&g.opt>0?1:0,fill_gap:g.room>0?Math.min(g.room,u)/u:0,fresh_need:clamp(f.freshNeed,0,1),target_gap:clamp(f.targetGap,0,1)};
+  option_gap:type==='FRESH'&&g.opt>0?1:0,fill_gap:g.room>0?Math.min(g.room,u)/u:0,fresh_need:clamp(f.freshNeed,0,1),target_gap:clamp(f.targetGap,0,1),replen_need:rn};
  let s=0;for(const key in w)s+=(w[key]||0)*(c[key]||0);return {s,c,sold};
 }
 
-// Greedy allocator over (SKU, store) lines with lazy re-scoring: the best line is taken, its WH stock and store gaps are
-// consumed, and every other line is re-valued against the updated state before it can be taken.
-function allocate(ks,sts,mode,cfg,w){
- const ceil=cfg.fill/100,G=newGapState(),pools=new Map(),out=[];
- const poolOf=k=>{if(!pools.has(k)){const a=K[k];pools.set(k,{loose:[a[20].slice(),a[21].slice()],packs:[a[43],a[44]]})}return pools.get(k)};
+// Greedy allocator over (SKU, store) lines with lazy re-scoring: the best line is taken, its WH stock, pack codes and the
+// store gaps are consumed, and every other line is re-valued against the updated state before it can be taken.
+//  opts.fresh  -> use the fresh pool (AV_MASTER_HTMBASE) instead of the placement pool
+//  opts.budget -> Map(si*2+c -> units) replacing the fill-ceiling room (fresh run: 110% budget or manual units)
+function allocate(ks,sts,mode,cfg,w,opts){
+ opts=opts||{};
+ const ceil=(cfg.fill||140)/100,G=newGapState(),pools=new Map(),out=[];
+ const poolOf=k=>{if(!pools.has(k))pools.set(k,opts.fresh?freshPool(k):placementPool(k));return pools.get(k)};
+ const gaps=(si,c)=>{const g=gapsOf(G,si,c,ceil);if(opts.budget&&!g.bud){g.bud=1;g.room=opts.budget.get(si*2+c)||0}return g};
  let maxStr=0;for(const si of sts)for(const c of [0,1]){const h=D.health[si][c];if(h)maxStr=Math.max(maxStr,h.str)}
- const cand=[];
- for(const k of ks)for(const si of sts){
+ const cand=[],minP=opts.fresh?(D.fresh.min_proj_30d||2)/30:0;
+ for(const k of ks){if(!poolOf(k))continue;for(const si of sts){
   const f=storeFactors(si,k);if(!f)continue;const has=!!STOCK[si*K.length+k];
   const type=mode==='fresh'?'FRESH':mode==='replen'?'REPLEN':(has?'REPLEN':'FRESH');
   if(type==='FRESH'&&has)continue;if(type==='REPLEN'&&!has)continue;
-  if(f.p*cfg.cover<(type==='FRESH'?2:1))continue;          // not enough projected demand for this line
-  cand.push({k,si,f,type,has})}
+  if(f.p*cfg.cover<(type==='FRESH'?2:1)||f.p<minP)continue;          // not enough projected demand for this line
+  cand.push({k,si,f,type,has})}}
  const heap=[],push=x=>{heap.push(x);let i=heap.length-1;while(i){const p=(i-1)>>1;if(heap[p].v>=heap[i].v)break;[heap[p],heap[i]]=[heap[i],heap[p]];i=p}},
   pop=()=>{const t=heap[0],l=heap.pop();if(heap.length){heap[0]=l;let i=0;for(;;){const a=2*i+1,b=a+1;let m=i;if(a<heap.length&&heap[a].v>heap[m].v)m=a;if(b<heap.length&&heap[b].v>heap[m].v)m=b;if(m===i)break;[heap[m],heap[i]]=[heap[i],heap[m]];i=m}}return t};
- const evalC=x=>{const g=gapsOf(G,x.si,x.f.c,ceil);if(g.room<=0)return null;const line=buildLine(x.k,x.si,x.type,poolOf(x.k),x.f.p,cfg);if(!line)return null;
+ const evalC=x=>{const g=gaps(x.si,x.f.c);if(g.room<=0)return null;const line=buildLine(x.k,x.si,x.type,poolOf(x.k),x.f.p,cfg);if(!line)return null;
   if(line.units>g.room){if(x.type==='FRESH'||line.packType==='PREPACK')return null;        // fresh sets and packs are never cut down
    line.split=line.split.map(v=>Math.floor(v*g.room/line.units));line.units=sum(line.split);if(!line.units)return null}
   const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0,maxDoi=S[x.si][10]||90;
   if(x.f.p*maxDoi<0.5*(have+line.units)*(x.type==='FRESH'?0.5:1))return null;   // would sit far beyond the store's DOI cap
-  const val=lineValue(x.f,line,x.type,g,w,maxStr);return {line,val}};
+  const val=lineValue(x.f,line,x.type,g,w,maxStr,x.k,x.si);return {line,val}};
  for(const x of cand){const e=evalC(x);if(e){x.v=e.val.s;push(x)}}
  while(heap.length){const x=pop(),e=evalC(x);if(!e)continue;
   if(heap.length&&e.val.s<heap[0].v-1e-9){x.v=e.val.s;push(x);continue}          // stale: re-queue with its updated value
-  const {line,val}=e,pool=poolOf(x.k),g=gapsOf(G,x.si,x.f.c,ceil);
-  if(line.packType==='PREPACK')pool.packs[line.z]-=line.packs;else line.split.forEach((v,i)=>pool.loose[line.z][i]-=v);
+  const {line,val}=e,pool=poolOf(x.k),g=gaps(x.si,x.f.c),before=poolUnits(pool,line.z);
+  if(line.packType==='PREPACK'){pool.packs[line.z]-=line.packs;line.codes=pool.codes[line.z].splice(0,line.packs)}
+  else{line.split.forEach((v,i)=>pool.loose[line.z][i]-=v);line.codes=[];if(x.type==='FRESH'&&pool.fso)pool.fso[line.z]--}
+  // fulfilment check: every unit / code taken must have been on hand
+  line.ok=line.packType==='PREPACK'?line.codes.length===line.packs:pool.loose[line.z].every(v=>v>=0);
   const snap={room:g.room,mix:g.mix[x.f.mk]||0,col:g.col[x.f.colKey]||0,band:g.band[x.f.band]||0,opt:g.opt};
   g.room-=line.units;if(g.mix[x.f.mk]!==undefined)g.mix[x.f.mk]-=line.units;if(g.col[x.f.colKey]!==undefined)g.col[x.f.colKey]-=line.units;
   if(g.band[x.f.band]!==undefined)g.band[x.f.band]-=line.units;if(x.type==='FRESH')g.opt--;
   const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0;
-  out.push({k:x.k,si:x.si,f:x.f,type:x.type,have,s:val.s,comp:val.c,sold:val.sold,gapBefore:snap,...line,
+  out.push({k:x.k,si:x.si,f:x.f,type:x.type,have,s:val.s,comp:val.c,sold:val.sold,gapBefore:snap,...line,availBefore:before,availAfter:poolUnits(pool,line.z),
    doiNow:x.f.p>0?have/x.f.p:-1,doiAfter:x.f.p>0?(have+line.units)/x.f.p:-1})}
  return out;
 }
@@ -255,36 +291,52 @@ const ALLOC_TIPS={store:'Store name (excluded: no base stock or unmapped cluster
  mix:'Metafield gap of the STORE for this SKU\'s bucket before allocation: ideal share − actual stock share (pp). Positive = store is short of this bucket',
  col:'Colour gap of the STORE before allocation: cluster sales share of this colour − store stock share (pp). Positive = store is short of this colour',
  price:'Price-band gap of the STORE before allocation: store sales share of this MRP band − stock share (pp). Positive = short of this price band',
+ codes:'Serial codes of the exact prepacks to pick (on hand in LIVE_INV_WAREHOUSE_OFFLINE_REPLEN). Each code is used once across the whole run',
+ avail:'Units of this SKU left in that WH zone (loose + prepacks) before → after this line. Lines are taken best-first, so later lines see what is left',
+ ok:'Fulfilment check: ✓ = every unit / pack code on this line was on hand when it was allocated',
  doi:'Days of inventory of THIS SKU at THIS store = stock ÷ projected ROS. "now" = before, "after" = after this allocation',cap:'Store DOI cap: 60 days in KA / DL / HR (WH states), 90 elsewhere'};
 function allocTable(out,limit){
  const shown=out.slice(0,limit||2000);
  return `<table><thead><tr>${th('Store',ALLOC_TIPS.store)}${th('Cluster')}${th('SKU',ALLOC_TIPS.sku)}${th('Colour')}${th('MRP','','n')}${th('Type',ALLOC_TIPS.type)}${th('Pack',ALLOC_TIPS.pack)}
- ${th('Units',ALLOC_TIPS.units,'n')}${th('Sizes',ALLOC_TIPS.sizes)}${th('WH',ALLOC_TIPS.wh)}${th('Score',ALLOC_TIPS.score,'n')}${th('Proj ROS',ALLOC_TIPS.proj,'n')}${th('Proj 30d',ALLOC_TIPS.p30,'n')}
+ ${th('Units',ALLOC_TIPS.units,'n')}${th('Sizes',ALLOC_TIPS.sizes)}${th('Prepack codes',ALLOC_TIPS.codes)}${th('WH',ALLOC_TIPS.wh)}${th('WH avail before → after',ALLOC_TIPS.avail,'n')}${th('OK',ALLOC_TIPS.ok)}${th('Score',ALLOC_TIPS.score,'n')}${th('Proj ROS',ALLOC_TIPS.proj,'n')}${th('Proj 30d',ALLOC_TIPS.p30,'n')}
  ${th('Evidence',ALLOC_TIPS.ev)}${th('Have',ALLOC_TIPS.have,'n')}${th('DOI now → after',ALLOC_TIPS.doi,'n')}${th('DOI cap',ALLOC_TIPS.cap,'n')}${th('Store fill',ALLOC_TIPS.fill,'n')}${th('Store STR',ALLOC_TIPS.str,'n')}
  ${th('Mix gap',ALLOC_TIPS.mix,'n')}${th('Colour gap',ALLOC_TIPS.col,'n')}${th('Price gap',ALLOC_TIPS.price,'n')}</tr></thead><tbody>${shown.map(r=>{const a=K[r.k],s=S[r.si],h=r.f.h;
  return `<tr><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td><a href="#" onclick="showSku('${a[0]}');return false">${a[0]}</a></td><td>${esc(W[a[10]])}</td><td class="n">${f0(a[13])}</td>
- <td>${r.type}</td><td>${r.packType==='PREPACK'?r.packs+' × PP'+r.depth:'loose'}</td><td class="n"><b>${r.units}</b></td><td class="sz">${szTxt(r.split)}</td>
- <td>${r.z?'South':'North'}${r.fallback?' <span class="warn">(fallback)</span>':''}</td><td class="n">${f2(r.s)}</td><td class="n">${f2(r.f.p)}</td><td class="n">${f1(r.f.p*30)}</td>
+ <td>${r.type}</td><td>${r.packType==='PREPACK'?r.packs+' × PP'+r.depth:'loose'}</td><td class="n"><b>${r.units}</b></td><td class="sz">${szTxt(r.split)}</td><td class="sz">${r.codes&&r.codes.length?r.codes.map(esc).join('<br>'):'–'}</td>
+ <td>${r.z?'South':'North'}${r.fallback?' <span class="warn">(fallback)</span>':''}</td><td class="n" data-v="${r.availAfter}">${f0(r.availBefore)} → ${f0(r.availAfter)}</td><td class="${r.ok?'good':'bad'}">${r.ok?'✓':'✗'}</td><td class="n">${f2(r.s)}</td><td class="n">${f2(r.f.p)}</td><td class="n">${f1(r.f.p*30)}</td>
  <td class="mut" title="${esc(EVTIP[r.f.ev])}">${EVTXT[r.f.ev]}</td><td class="n">${r.have}</td><td class="n" data-v="${r.doiAfter}">${r.doiNow<0?'–':f0(r.doiNow)} → ${r.doiAfter<0?'–':f0(r.doiAfter)}</td><td class="n">${s[10]}</td>
  <td class="n ${h.fill>1.4?'bad':h.fill<.85?'good':''}">${pc(h.fill)}</td><td class="n">${pc(h.str)}</td>
  <td class="n ${r.f.mixGap>0?'good':''}" data-v="${r.f.mixGap}">${(r.f.mixGap*100).toFixed(1)}pp</td><td class="n ${r.f.colGap>0?'good':''}" data-v="${r.f.colGap}">${(r.f.colGap*100).toFixed(1)}pp</td>
  <td class="n ${r.f.priceGap>0?'good':''}" data-v="${r.f.priceGap}">${(r.f.priceGap*100).toFixed(1)}pp</td></tr>`}).join('')}</tbody></table>`}
 function downloadAlloc(out,name){
- const hdr=['BRANCH_CODE','STORE','CLUSTER','ZONE','SKU_GROUP','CATEGORY','PRODUCT_NAME','COLOUR','MRP','AGE_TAG','NRC','TYPE','PACK_TYPE','PREPACKS','PREPACK_DEPTH','UNITS',...SZ.map(z=>'QTY_'+z),
-  'WAREHOUSE','FALLBACK','SCORE','PROJ_ROS','PROJ_30D','EVIDENCE','STORE_STOCK_BEFORE','DOI_BEFORE','DOI_AFTER','STORE_FILL','STORE_STR','MIX_GAP_PP','COLOUR_GAP_PP','PRICE_GAP_PP'];
+ const hdr=['BRANCH_CODE','STORE','CLUSTER','ZONE','SKU_GROUP','CATEGORY','PRODUCT_NAME','COLOUR','MRP','AGE_TAG','NRC','TYPE','PACK_TYPE','PREPACKS','PREPACK_DEPTH','PREPACK_CODES','UNITS',...SZ.map(z=>'QTY_'+z),
+  'WAREHOUSE','WH_AVAIL_BEFORE','WH_AVAIL_AFTER','FULFILLABLE','FALLBACK','SCORE','PROJ_ROS','PROJ_30D','EVIDENCE','STORE_STOCK_BEFORE','DOI_BEFORE','DOI_AFTER','STORE_FILL','STORE_STR','MIX_GAP_PP','COLOUR_GAP_PP','PRICE_GAP_PP'];
  const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
- const lines=[hdr.join(',')].concat(out.map(r=>{const a=K[r.k],s=S[r.si];return [s[0],s[1],s[6],s[5],a[0],CATS[a[1]],a[2],W[a[10]],a[13],AGE[a[22]],a[39]?'Y':'',r.type,r.packType,r.packs,r.depth||'',r.units,...r.split,
-  r.z?'South':'North',r.fallback?'Y':'',r.s.toFixed(3),r.f.p.toFixed(3),(r.f.p*30).toFixed(1),EVTXT[r.f.ev],r.have,r.doiNow<0?'':r.doiNow.toFixed(0),r.doiAfter<0?'':r.doiAfter.toFixed(0),
+ const lines=[hdr.join(',')].concat(out.map(r=>{const a=K[r.k],s=S[r.si];return [s[0],s[1],s[6],s[5],a[0],CATS[a[1]],a[2],W[a[10]],a[13],AGE[a[22]],a[39]?'Y':'',r.type,r.packType,r.packs,r.depth||'',(r.codes||[]).join(' | '),r.units,...r.split,
+  r.z?'South':'North',r.availBefore,r.availAfter,r.ok?'Y':'N',r.fallback?'Y':'',r.s.toFixed(3),r.f.p.toFixed(3),(r.f.p*30).toFixed(1),EVTXT[r.f.ev],r.have,r.doiNow<0?'':r.doiNow.toFixed(0),r.doiAfter<0?'':r.doiAfter.toFixed(0),
   (r.f.h.fill*100).toFixed(0),(r.f.h.str*100).toFixed(0),(r.f.mixGap*100).toFixed(1),(r.f.colGap*100).toFixed(1),(r.f.priceGap*100).toFixed(1)].map(q).join(',')}));
  const blob=new Blob([lines.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
  el.href=u;el.download=name+'_'+new Date().toISOString().slice(0,10)+'.csv';el.click();URL.revokeObjectURL(u);
 }
-const HOW_ALLOC=`<div class="how"><b>How the allocation works</b><ol>
- <li><b>Projected demand.</b> For each store, this SKU's rate of sale is projected from the similar SKUs' sales at that store (weighted by similarity and recency), blended with the SKU's own history if it has one. "Evidence" tells you how much history backs it.</li>
- <li><b>What can be sent (pack rules).</b> FRESH (store doesn't carry it): up to 2 prepacks, or one loose size set XS1 S2 M3 L3 XL2 XXL1 (12 units). S, M, L and XL must all be available in full; XS and XXL go if available. Plus styles: 3XL–6XL, at least 3 of the 4. REPLEN (store carries it): 1 or 2 whole prepacks, or only the loose sizes short of a full set / 30-day need. Prepacks go first; sizes the WH doesn't have are skipped.</li>
- <li><b>Value of each store × SKU line.</b> Expected sell-through in ${D.alloc.days_cover} days + how much of the store's gaps the line closes: metafield bucket, colour, price band (the nearest band counts half), options and category fill room. Weights are set in the Allocation tab.</li>
- <li><b>Greedy, best line first.</b> The highest-value line is taken; WH stock (by zone, size and pack) and that store's gaps are reduced, so a second navy SKU gets less credit for the same navy gap. Repeat until stock or gaps run out.</li>
- <li><b>Hard limits.</b> Own-zone WH first, then the other zone (fallback); the store's category fill ceiling; no line that would sit far beyond the store's DOI cap.</li></ol></div>`;
+const PACK_RULES=`<b>FRESH</b> (store doesn't carry the SKU): exactly <b>2 prepacks</b> when the zone has 2 coded packs on hand, otherwise one loose
+ size set XS1 S2 M3 L3 XL2 XXL1 (12 units; S, M, L, XL must all be there, XS / XXL only if available; plus styles 3XL–6XL, at least 3 of 4).
+ <b>REPLEN</b> (store carries it; goal: keep fast sellers stocked and fix broken sizes): per-size need = max(set qty, projected ${D.alloc.days_cover}-day sales × the store's size curve) − store stock, max 6 a size.
+ Prepacks follow store_replen_prepack: packs = max over sizes of ⌈need ÷ units of that size in a pack⌉, capped at 1 for packs of 10+ units (else 2), +1 if any size needs 5+, never more than 2; otherwise only the loose sizes needed.
+ Size-broken styles and styles under ${D.alloc.days_cover} days of cover score higher (weight "Replen need"). Every prepack is a real serial code on hand; sizes the WH doesn't have are skipped, never substituted.`;
+const HOW_ALLOC=`<div class="how"><b>How "Where to allocate" works (only the SKU(s) on this page)</b><ol>
+ <li><b>Which SKUs.</b> Only the SKU you searched, or the SKUs in the "Add to allocation" basket, across every eligible store (filters above). Stock comes from AVAILABILITY_MASTER_V2_MERGED (loose sizes) and the prepacks in PREPACKS_ALLOCATION_HELPER_V1 that have live codes.</li>
+ <li><b>Projected demand.</b> For each store, the SKU's rate of sale is projected from the similar SKUs' sales at that store (weighted by similarity and recency), blended with its own history if any. "Evidence" shows how much history backs it.</li>
+ <li><b>Pack rules.</b> ${PACK_RULES}</li>
+ <li><b>Value of each store × SKU line.</b> Expected sell-through + how much of the store's gaps the line closes: metafield bucket, colour, price band (the nearest band counts half), options, category fill room, replen need. Weights are on the Allocation tab.</li>
+ <li><b>Greedy, best line first.</b> The highest-value line is taken; WH stock (zone, size, pack code) and that store's gaps are reduced, so a second navy SKU gets less credit for the same navy gap.</li>
+ <li><b>Hard limits.</b> Own-zone WH first, then the other zone (fallback); category fill ceiling ${D.alloc.fill_ceiling}% of base × ideal mix; no line far beyond the store's DOI cap.</li></ol></div>`;
+const HOW_FRESH=`<div class="how"><b>How the fresh-pool run works (whole fresh pool, store by store)</b><ol>
+ <li><b>Fresh pool.</b> Every Shirt / T-shirt in AV_MASTER_HTMBASE with full size options or prepack sets (store_avail.py logic), per zone: loose sizes after buffer, FULL_SIZE_OPTIONS and coded prepacks. A SKU is fresh for a store when the store has no stock and no JIT of it.</li>
+ <li><b>Which stores.</b> The stores in scope (filtered stores, one store, or chosen clusters). In <b>Auto</b> a store qualifies only while its <b>fill after JIT + IST</b> is below ${Math.round(D.fresh.fill_budget*100)}% of base stock.</li>
+ <li><b>How many units.</b> Auto: budget = ${Math.round(D.fresh.fill_budget*100)}% × base stock − net stock after JIT + IST (e.g. base 1,000 → 1,100 − 1,000 = 100 units). Net stock = inventory + JIT + IST in − ROS 7d × lead time − outward − IST given (STORE_CATEGORY_DELTA).
+  The budget is split between Shirts and T-shirts by category gap (category base − category net stock), each category capped at ${Math.round(D.fresh.fill_budget*100)}% of its own category base. Manual: you set the units per store and Both (split by gap) or one category.</li>
+ <li><b>Pack rules.</b> Fresh only: exactly 2 coded prepacks, else one loose size set (S–XL complete) that uses one full size option of the zone.</li>
+ <li><b>Best allocation.</b> Each store × SKU line is valued (expected sell-through + metafield, colour, price, option gaps + store freshness and target need) and the best line is taken first; WH stock, codes and the store's budget and gaps shrink, then the rest are re-valued. It stops when the budget, the pool or the demand runs out.</li></ol></div>`;
 
 // ---------------------------------------------------------------- TAB 1: search, history, basket
 document.getElementById('skuList').innerHTML=K.map(k=>`<option value="${k[0]}">`).join('');
@@ -430,134 +482,296 @@ function renderPlacement(){
 }
 
 // ---------------------------------------------------------------- TAB 2 filters
-// ---------------------------------------------------------------- TAB 2 filters
-const F={zone:'',cluster:'',type:'',cat:'',band:'',fresh:'',stores:new Set()};
+const F={zone:'',cluster:'',type:'',cat:'',band:'',age:'',stores:new Set()};
+let DCAT=0,MBENCH='ideal';
+const uniq=i=>[...new Set(S.map(s=>s[i]))].filter(Boolean).sort();
 function msHtml(){const opts=S.map((s,i)=>[i,s[1]]).sort((p,q)=>p[1].localeCompare(q[1]));
  return `<div class="ms" id="msStores"><button class="b" id="msBtn">Stores: all</button><div class="dd"><input id="msQ" placeholder="search store" style="width:100%;margin-bottom:4px">
- <div><a href="#" id="msAll">select shown</a> · <a href="#" id="msNone">clear</a></div><div id="msList">${opts.map(([i,n])=>`<label data-n="${esc(n.toLowerCase())}"><input type="checkbox" value="${i}"> ${esc(n)} <span class="mut">${esc(S[i][6])}</span></label>`).join('')}</div></div></div>`}
-const uniq=i=>[...new Set(S.map(s=>s[i]))].filter(Boolean).sort();
+ <div><a href="#" id="msAll">select shown</a> · <a href="#" id="msNone">clear</a></div><div id="msList">${opts.map(([i,n])=>`<label data-n="${esc(n.toLowerCase())}" data-si="${i}"><input type="checkbox" value="${i}"> ${esc(n)} <span class="mut">${esc(S[i][6])}</span></label>`).join('')}</div></div></div>`}
 document.getElementById('f2').innerHTML=`
- <select id="fZone"><option value="">All zones</option>${uniq(5).map(x=>`<option>${x}</option>`).join('')}</select>
- <select id="fClus"><option value="">All clusters</option>${uniq(6).map(x=>`<option>${esc(x)}</option>`).join('')}</select>
- <select id="fType"><option value="">All store types</option>${uniq(2).map(x=>`<option>${x}</option>`).join('')}</select>
+ <select id="fZone" title="Zone (STORE_ZONE_MAP)"><option value="">All zones</option>${uniq(5).map(x=>`<option>${x}</option>`).join('')}</select>
+ <select id="fClus" title="Cluster; the list follows the zone"></select>
+ <select id="fType" title="Store type (COCO / COFO / FOFO ...)"><option value="">All store types</option>${uniq(2).map(x=>`<option>${x}</option>`).join('')}</select>
  ${msHtml()}
- <select id="fCat">${CATS.map((c,i)=>`<option value="${i}">${c}</option>`).join('')}<option value="">Both categories</option></select>
- <select id="fBand"><option value="">All price bands</option>${D.bands.map(b=>`<option>${b}</option>`).join('')}</select>
- <select id="fFresh"><option value="">All SKUs (allocation)</option><option value="new">New + recent only</option><option value="fresh">WH inward ≤ ${D.freshDays}d</option><option value="old">Old only</option></select>
- <span class="hint" id="fCount"></span>`;
+ <select id="fCat" title="Category shown in the health table"><option value="">Both categories</option>${CATS.map((c,i)=>`<option value="${i}">${c}</option>`).join('')}</select>
+ <select id="fBand" title="Price band: health metrics are recomputed on the store stock in this MRP band; the fresh run only uses SKUs in it"><option value="">All price bands</option>${D.bands.map(b=>`<option>${b}</option>`).join('')}</select>
+ <select id="fAge" title="SKU age: health metrics are recomputed on store stock of these SKUs; the fresh run only uses them"><option value="">All SKU ages</option><option value="new">New + recent SKUs</option><option value="fresh">WH inward ≤ ${D.freshDays}d</option><option value="old">Old SKUs</option></select>
+ <button class="b" id="fReset">Reset filters</button><span class="hint" id="fCount"></span>`;
 const ms=document.getElementById('msStores');
+function clusterOpts(){const el=document.getElementById('fClus'),cl=[...new Set(S.filter(s=>!F.zone||s[5]===F.zone).map(s=>s[6]))].sort();
+ if(F.cluster&&!cl.includes(F.cluster))F.cluster='';
+ el.innerHTML=`<option value="">All clusters</option>${cl.map(x=>`<option ${x===F.cluster?'selected':''}>${esc(x)}</option>`).join('')}`}
+function storeOk(si){const s=S[si];return (!F.zone||s[5]===F.zone)&&(!F.cluster||s[6]===F.cluster)&&(!F.type||s[2]===F.type)}
+function msSync(){ms.querySelectorAll('#msList label').forEach(l=>{const si=+l.dataset.si;l.querySelector('input').checked=F.stores.has(si);l.classList.toggle('hide',!storeOk(si))});
+ const q=document.getElementById('msQ').value.toLowerCase();ms.querySelectorAll('#msList label').forEach(l=>l.style.display=(!l.classList.contains('hide')&&l.dataset.n.includes(q))?'':'none');
+ document.getElementById('msBtn').textContent=F.stores.size?(F.stores.size===1?S[[...F.stores][0]][1]:F.stores.size+' stores'):'Stores: all'}
 document.getElementById('msBtn').onclick=e=>{e.stopPropagation();ms.classList.toggle('open')};
 document.addEventListener('click',e=>{if(!ms.contains(e.target))ms.classList.remove('open')});
-document.getElementById('msQ').oninput=e=>{const q=e.target.value.toLowerCase();ms.querySelectorAll('#msList label').forEach(l=>l.style.display=l.dataset.n.includes(q)?'':'none')};
+document.getElementById('msQ').oninput=msSync;
 document.getElementById('msList').onchange=()=>{F.stores=new Set([...ms.querySelectorAll('#msList input:checked')].map(i=>+i.value));refresh2()};
 document.getElementById('msAll').onclick=e=>{e.preventDefault();ms.querySelectorAll('#msList label').forEach(l=>{if(l.style.display!=='none')l.querySelector('input').checked=true});document.getElementById('msList').onchange()};
-document.getElementById('msNone').onclick=e=>{e.preventDefault();ms.querySelectorAll('#msList input').forEach(i=>i.checked=false);document.getElementById('msList').onchange()};
-[['fZone','zone'],['fClus','cluster'],['fType','type'],['fCat','cat'],['fBand','band'],['fFresh','fresh']].forEach(([id,k])=>document.getElementById(id).onchange=e=>{F[k]=e.target.value;refresh2()});
-F.cat='0';
-function storesFiltered(){const out=[];for(let si=0;si<NS;si++){const s=S[si];if(F.zone&&s[5]!==F.zone)continue;if(F.cluster&&s[6]!==F.cluster)continue;if(F.type&&s[2]!==F.type)continue;
- if(F.stores.size&&!F.stores.has(si))continue;out.push(si)}return out}
+document.getElementById('msNone').onclick=e=>{e.preventDefault();F.stores=new Set();refresh2()};
+[['fZone','zone'],['fClus','cluster'],['fType','type'],['fCat','cat'],['fBand','band'],['fAge','age']].forEach(([id,k])=>document.getElementById(id).onchange=e=>{F[k]=e.target.value;
+ if(k==='cat'&&F.cat!=='')DCAT=+F.cat;if(k==='zone'||k==='cluster'||k==='type')F.stores=new Set([...F.stores].filter(storeOk));refresh2()});
+document.getElementById('fReset').onclick=()=>{Object.assign(F,{zone:'',cluster:'',type:'',cat:'',band:'',age:'',stores:new Set()});
+ ['fZone','fType','fCat','fBand','fAge'].forEach(id=>document.getElementById(id).value='');document.getElementById('msQ').value='';refresh2()};
+function storesFiltered(){const out=[];for(let si=0;si<NS;si++){if(!storeOk(si))continue;if(F.stores.size&&!F.stores.has(si))continue;out.push(si)}return out}
 const catSel=()=>F.cat===''?CATS.map((c,i)=>i):[+F.cat];
-function combinedHealth(si){            // one category, or both summed
- const cs=catSel(),hs=cs.map(c=>D.health[si][c]).filter(Boolean);if(!hs.length)return null;if(hs.length===1)return hs[0];
- const s=(f)=>hs.reduce((a,h)=>a+h[f],0),base=s('base'),stock=s('stock'),l30=s('l30'),opts=s('opts');
- return {base,stock,opts,idealOpts:s('idealOpts'),fill:base?stock/base:-1,l30,str:hs.reduce((a,h)=>a+h.str*h.stock,0)/(stock||1),doi:l30?stock/(l30/30):-1,
-  cut:hs.reduce((a,h)=>a+h.cut*h.opts,0)/(opts||1),fresh:hs.reduce((a,h)=>a+h.fresh*h.stock,0)/(stock||1),aged:hs.reduce((a,h)=>a+h.aged*h.stock,0)/(stock||1),
-  noSale:s('noSale'),rev90:s('rev90'),idealCat:s('idealCat'),target:hs[0].target,actual:hs[0].actual,jit:s('jit')}}
+function skuOk(k){const a=K[k];if(F.band&&W[a[28]]!==F.band)return false;if(F.age==='new'&&a[22]===2)return false;if(F.age==='old'&&a[22]!==2)return false;
+ if(F.age==='fresh'){const d=daysSince(a[29]);if(d<0||d>D.freshDays)return false}return true}
+const subsetOn=()=>!!(F.band||F.age);
+function catHealth(si,c){       // one category; with a price / age filter the stock metrics are recomputed on that subset of store stock
+ const h=D.health[si][c];if(!h||!subsetOn())return h;
+ const rows=storeStock[si].filter(r=>K[r[1]][1]===c&&skuOk(r[1])),stock=sum(rows.map(r=>r[2])),l30=sum(rows.map(r=>r[3])),opts=rows.length;
+ return {...h,stock,opts,l30,str:(l30+stock)?l30/(l30+stock):0,doi:l30?stock/(l30/30):-1,cut:opts?rows.filter(r=>r[6]).length/opts:0,
+  fresh:stock?sum(rows.filter(r=>r[5]<=D.freshDays).map(r=>r[2]))/stock:0,aged:stock?sum(rows.filter(r=>r[5]>120).map(r=>r[2]))/stock:0,
+  noSale:rows.filter(r=>r[3]===0&&r[5]>30).length,share:h.stock?stock/h.stock:0}}
+function combinedHealth(si){     // selected category, or both summed
+ const hs=catSel().map(c=>catHealth(si,c)).filter(Boolean);if(!hs.length)return null;if(hs.length===1)return hs[0];
+ const s=f=>hs.reduce((a,h)=>a+(h[f]||0),0),stock=s('stock'),l30=s('l30'),opts=s('opts'),cb=s('catBase'),ct=s('catTarget');
+ const wavg=(f,by)=>hs.reduce((a,h)=>a+h[f]*h[by],0)/(s(by)||1);
+ return {base:s('base'),stock,opts,idealOpts:s('idealOpts'),l30,str:wavg('str','stock'),doi:l30?stock/(l30/30):-1,cut:wavg('cut','opts'),fresh:wavg('fresh','stock'),aged:wavg('aged','stock'),
+  noSale:s('noSale'),rev90:s('rev90'),idealCat:s('idealCat'),target:hs[0].target,actual:hs[0].actual,jit:s('jit'),catBase:cb,inv:s('inv'),netJit:s('netJit'),netIst:s('netIst'),
+  fillNow:cb?s('inv')/cb:-1,fillJit:cb?s('netJit')/cb:-1,fillIst:cb?s('netIst')/cb:-1,catTarget:ct,catTargetPct:ct?hs.reduce((a,h)=>a+h.catTarget*h.catTargetPct,0)/ct:0}}
+// store level (all categories, STORE_CATEGORY_DELTA): s[12] base, s[13] inventory, s[14] net after JIT, s[15] net after IST, s[16] has row
+const storeFill=si=>{const s=S[si];return s[16]&&s[12]?{now:s[13]/s[12],jit:s[14]/s[12],ist:s[15]/s[12]}:null};
+
+// Fresh budget: store-level units = fill_budget x base - net stock after JIT + IST, split Shirts / T-shirts by category gap
+// (category base - category net after IST); each category capped at fill_budget x its category base (auto only).
+function freshBudget(si,catMode,manual){
+ const s=S[si],B=s[12],FB=D.fresh.fill_budget,cs=catMode==='both'?[0,1]:[+catMode],cats=[0,0];
+ let total;
+ if(manual!=null)total=Math.max(0,Math.floor(manual));
+ else{if(!s[16]||!B)return {total:0,cats,why:'not in STORE_CATEGORY_DELTA'};total=Math.max(0,Math.floor(FB*B-s[15]));
+  if(!total)return {total:0,cats,why:'fill after JIT + IST ≥ '+Math.round(FB*100)+'%'}}
+ const hc=c=>D.health[si][c],gap=c=>hc(c)?Math.max(0,hc(c).catBase-hc(c).netIst):0,cap=c=>hc(c)?Math.max(0,Math.floor(FB*hc(c).catBase-hc(c).netIst)):0;
+ const lim=c=>manual!=null?Infinity:cap(c);
+ if(cs.length===1)cats[cs[0]]=Math.min(total,lim(cs[0]));
+ else{const g=cs.map(gap),G=sum(g),bw=cs.map(c=>hc(c)?hc(c).catBase:0);
+  cs.forEach((c,i)=>{const sh=G>0?g[i]/G:(sum(bw)?bw[i]/sum(bw):1/cs.length);cats[c]=Math.min(Math.floor(total*sh),lim(c))});
+  let left=total-sum(cats);for(const c of cs){const add=Math.min(left,lim(c)-cats[c]);if(add>0){cats[c]+=add;left-=add}}}   // spill-over to the other category
+ return {total,cats,why:sum(cats)?'':'both categories ≥ '+Math.round(FB*100)+'% of their category base'}}
+
+const HT={store:'Store name',fillS:'STORE fill after JIT + IST, all categories = (inventory + JIT + IST in − ROS 7d × lead time − outward − IST given) ÷ store base stock (STORE_CATEGORY_DELTA)',
+ bud:'Fresh units the store can take in an auto run = '+Math.round(D.fresh.fill_budget*100)+'% × base stock − net stock after JIT + IST (0 when the store is already at or above it)',
+ cbase:'Category base = base stock × ideal category mix (GS_SHEET3)',stock:'Category stock on hand + JIT (units)',
+ fNow:'Fill now = category inventory ÷ category base',fJit:'Fill after JIT = (inventory + JIT − ROS 7d × lead time − outward) ÷ category base',
+ fIst:'Fill after IST = (inventory + JIT + IST in − ROS 7d × lead time − outward − IST given) ÷ category base',
+ mix:'Category share of the store\'s apparel stock (actual) / ideal category mix (GS_SHEET3)',opts:'Options (styles) the store carries now incl. JIT',
+ iopts:'Ideal options = base stock × ideal category mix ÷ depth (DEPT_IDEAL)',ogap:'Ideal options − options carried (positive = room for new styles)',
+ l30:'Units sold in the last 30 days',str:'Sell-through, 30 days',doi:'Days of inventory = stock ÷ (L30 ÷ 30); red above the store DOI cap',
+ cut:'Share of options that are size-broken incl. JIT',fresh:'Share of stock inwarded to the store within '+D.freshDays+' days',aged:'Share of stock older than 120 days',
+ nos:'Options with no sale in 30 days that are older than 30 days',ctgt:'Category target this month (FACT_PARETO_TARGET_PERFORMANCE_SUMMARY, store wise) = store target × (category inventory share × category ASP) ÷ Σ over the store\'s categories',
+ cach:'Category revenue this month ÷ category target (TARGET_PCT_ACHIEVED). Compare with the share of the month gone'};
 function refresh2(){
+ clusterOpts();msSync();
  const sts=storesFiltered();document.getElementById('fCount').textContent=sts.length+' stores';
- const el=document.getElementById('healthTbl');
- el.innerHTML=`<table><thead><tr><th>Store</th><th>Cluster</th><th>Zone</th><th>Type</th><th class="n">Base (cat)</th><th class="n">Stock+JIT</th><th class="n">Fill</th><th class="n">Cat mix act/ideal</th><th class="n">Options</th><th class="n">Ideal opts</th><th class="n">Opt gap</th><th class="n">L30</th><th class="n">STR</th><th class="n">DOI</th><th class="n">Cut %</th><th class="n">Fresh %</th><th class="n">Aged>120d</th><th class="n">No sale 30d</th><th class="n">MTD target</th></tr></thead><tbody>${
- sts.map(si=>{const s=S[si],h=combinedHealth(si);if(!h)return'';const catAct=s[11]?h.stock/s[11]:0,tg=h.target?h.actual/h.target:-1;
- return `<tr class="click" data-si="${si}"><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td>${s[5]}</td><td>${s[2]}</td><td class="n">${f0(h.base)}</td><td class="n">${f0(h.stock)}</td>
- <td class="n ${h.fill>1.05?'bad':h.fill>=0&&h.fill<.85?'warn':'good'}" data-v="${h.fill}">${pc(h.fill)}</td><td class="n" data-v="${catAct-h.idealCat}">${pc(catAct)} / ${pc(h.idealCat)}</td>
+ document.getElementById('fNote').innerHTML=subsetOn()?`<span class="warn">Price / age filter on:</span> stock, options, L30, STR, DOI, cut, fresh and aged are recomputed on the store stock of SKUs ${F.band?'in '+esc(F.band):''}${F.band&&F.age?' and ':''}${F.age?'of age "'+esc(document.getElementById('fAge').selectedOptions[0].text)+'"':''}. Fill and targets stay at category level.`:'';
+ const el=document.getElementById('healthTbl'),catBoth=F.cat==='';
+ el.innerHTML=`<table><thead><tr>${th('Store',HT.store)}${th('Cluster')}${th('Zone')}${th('Type')}${th('Store fill after IST',HT.fillS,'n')}${th('Fresh budget',HT.bud,'n')}
+ ${th('Cat base',HT.cbase,'n')}${th('Stock+JIT',HT.stock,'n')}${th('Fill now',HT.fNow,'n')}${th('After JIT',HT.fJit,'n')}${th('After IST',HT.fIst,'n')}${th('Cat mix act / ideal',HT.mix,'n')}
+ ${th('Options',HT.opts,'n')}${th('Ideal opts',HT.iopts,'n')}${th('Opt gap',HT.ogap,'n')}${th('L30',HT.l30,'n')}${th('STR',HT.str,'n')}${th('DOI',HT.doi,'n')}${th('Cut %',HT.cut,'n')}
+ ${th('Fresh %',HT.fresh,'n')}${th('Aged >120d',HT.aged,'n')}${th('No sale 30d',HT.nos,'n')}${th('Cat target',HT.ctgt,'n')}${th('Cat achieved',HT.cach,'n')}</tr></thead><tbody>${
+ sts.map(si=>{const s=S[si],h=combinedHealth(si);if(!h)return'';const catAct=s[11]?h.stock/s[11]:0,sf=storeFill(si),bud=freshBudget(si,'both',null);
+ const fc=x=>x<0?'':x>1.1?'bad':x<.85?'warn':'good',behind=h.catTarget?h.catTargetPct/100<DAYFRAC:false;
+ return `<tr class="click" data-si="${si}"><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td>${s[5]}</td><td>${s[2]}</td>
+ <td class="n ${sf?fc(sf.ist):''}" data-v="${sf?sf.ist:-1}" title="${sf?'now '+pc(sf.now)+' · after JIT '+pc(sf.jit)+' · base '+f0(s[12]):'no STORE_CATEGORY_DELTA row'}">${sf?pc(sf.ist):'–'}</td>
+ <td class="n" data-v="${bud.total}" title="${esc(bud.why||('Shirts '+bud.cats[0]+' · T-shirts '+bud.cats[1]))}">${bud.total?f0(bud.total):'<span class="mut">0</span>'}</td>
+ <td class="n">${f0(h.catBase)}</td><td class="n">${f0(h.stock)}</td>
+ <td class="n ${fc(h.fillNow)}" data-v="${h.fillNow}">${pc(h.fillNow)}</td><td class="n ${fc(h.fillJit)}" data-v="${h.fillJit}">${pc(h.fillJit)}</td><td class="n ${fc(h.fillIst)}" data-v="${h.fillIst}">${pc(h.fillIst)}</td>
+ <td class="n" data-v="${catAct-h.idealCat}">${pc(catAct)} / ${pc(h.idealCat)}</td>
  <td class="n">${h.opts}</td><td class="n">${h.idealOpts}</td><td class="n ${h.idealOpts-h.opts>0?'warn':''}">${h.idealOpts-h.opts}</td><td class="n">${f0(h.l30)}</td><td class="n">${pc(h.str)}</td>
  <td class="n ${h.doi>s[10]?'bad':''}" data-v="${h.doi}">${h.doi<0?'–':f0(h.doi)}</td><td class="n ${h.cut>.3?'bad':''}" data-v="${h.cut}">${pc(h.cut)}</td><td class="n ${h.fresh<.2?'warn':''}" data-v="${h.fresh}">${pc(h.fresh)}</td>
- <td class="n ${h.aged>.3?'bad':''}" data-v="${h.aged}">${pc(h.aged)}</td><td class="n">${h.noSale}</td><td class="n ${tg>=1?'good':tg>=0?'bad':''}" data-v="${tg}">${pc(tg)}</td></tr>`}).join('')}</tbody></table>`;
- sortable(el);el.querySelectorAll('tr.click').forEach(tr=>tr.onclick=()=>storeDetail(+tr.dataset.si));
+ <td class="n ${h.aged>.3?'bad':''}" data-v="${h.aged}">${pc(h.aged)}</td><td class="n">${h.noSale}</td>
+ <td class="n" data-v="${h.catTarget}">${h.catTarget?'₹'+f0(h.catTarget):'–'}</td><td class="n ${h.catTarget?(behind?'bad':'good'):''}" data-v="${h.catTargetPct}">${h.catTarget?f1(h.catTargetPct)+'%':'–'}</td></tr>`}).join('')}</tbody></table>
+ <div class="hint" style="margin-top:4px">Month gone: ${pc(DAYFRAC)} — a category is behind (red) when its achievement is below that. ${catBoth?'Both categories are summed.':''}</div>`;
+ sortable(el);el.querySelectorAll('tr.click').forEach(tr=>tr.onclick=()=>openStore(+tr.dataset.si,F.cat===''?DCAT:+F.cat,true));
+ if(sts.length===1)storeDetail(sts[0]);else document.getElementById('storeDetail').innerHTML='';
+ runPreview();
 }
-function bars(obj,label,keys){
+function openStore(si,c,keepFilters){
+ tabGo('alloc');if(!keepFilters){Object.assign(F,{zone:'',cluster:'',type:'',band:'',age:''});['fZone','fType','fBand','fAge'].forEach(id=>document.getElementById(id).value='')}
+ F.stores=new Set([si]);DCAT=c;refresh2();document.getElementById('storeDetail').scrollIntoView({behavior:'smooth'})}
+function bars(obj,label,keys,note){
  keys=keys||Object.keys(obj).sort((p,q)=>(obj[q][0]+obj[q][1])-(obj[p][0]+obj[p][1]));
  const mx=Math.max(.01,...keys.map(x=>Math.max(...(obj[x]||[0,0]))));
- return `<h3>${label} <span class="mut" style="text-transform:none">(bar = actual stock share, line = benchmark)</span></h3>${keys.map(x=>{const [i,a]=obj[x]||[0,0],d=a-i;
+ return `<h3>${label} <span class="mut" style="text-transform:none">(${note||'bar = actual stock share, line = benchmark'})</span></h3>${keys.map(x=>{const [i,a]=obj[x]||[0,0],d=a-i;
  return `<div class="bar"><span class="l" title="${esc(x)}">${esc(x)}</span><span class="t"><span class="a" style="width:${a/mx*100}%"></span><span class="i" style="left:${i/mx*100}%"></span></span>
- <span class="d ${Math.abs(d)<.02?'mut':d>0?'bad':'good'}">${d>0?'+':''}${(d*100).toFixed(1)}pp</span></div>`}).join('')}`}
+ <span class="d ${Math.abs(d)<.02?'mut':d>0?'bad':'good'}" title="actual − benchmark">${d>0?'+':''}${(d*100).toFixed(1)}pp</span></div>`}).join('')}`}
+const skuMini=rows=>rows.length?`<table class="mini2"><thead><tr><th>SKU</th><th>Colour</th><th class="n" title="Store stock incl. JIT">Units</th><th class="n" title="Units sold in 30 days">L30</th><th class="n" title="Days since the style first arrived at the store">Age (d)</th></tr></thead><tbody>${rows.map(r=>`<tr class="click" onclick="showSku('${K[r[1]][0]}')"><td>${K[r[1]][0]}</td><td class="mut">${esc(W[K[r[1]][10]])}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[5]}</td></tr>`).join('')}</tbody></table>`:'<div class="mut">none</div>';
 function storeDetail(si){
- const s=S[si],cs=catSel(),el=document.getElementById('storeDetail');
- let h=`<div class="card"><div style="display:flex;justify-content:space-between"><h2>${esc(s[1])} <span class="mut">BC ${s[0]} · ${esc(s[6])} · ${s[5]} · ${s[2]} · ${esc(s[4])} · ${f0(s[8])} sqft · base stock ${f0(s[9])} · DOI cap ${s[10]}d</span></h2><button class="b" onclick="document.getElementById('storeDetail').innerHTML=''">Close</button></div>`;
- for(const c of cs){const hh=D.health[si][c];if(!hh)continue;
-  const sk=storeStock[si].filter(r=>K[r[1]][1]===c&&(!F.band||W[K[r[1]][28]]===F.band));
-  const cut=sk.filter(r=>r[6]).sort((p,q)=>q[4]-p[4]).slice(0,15),aged=sk.filter(r=>r[5]>120&&r[3]===0).sort((p,q)=>q[2]-p[2]).slice(0,15),top=sk.slice().sort((p,q)=>q[4]-p[4]).slice(0,10);
-  const mk=D.mixKeys[CATS[c]].filter(x=>hh.mix[x]);
-  h+=`<h2 style="margin-top:12px">${CATS[c]}</h2><div class="kpi">
-   <div><b>${pc(hh.fill)}</b><span>fill (${f0(hh.stock)} / ${f0(hh.base)})</span></div><div><b>${hh.opts} / ${hh.idealOpts}</b><span>options / ideal (depth ${hh.depth})</span></div>
-   <div><b>${pc(hh.str)}</b><span>STR 30d</span></div><div><b>${hh.doi<0?'–':f0(hh.doi)}</b><span>DOI</span></div><div><b>${pc(hh.cut)}</b><span>cut-size options</span></div>
+ const s=S[si],el=document.getElementById('storeDetail'),c=DCAT,hh=catHealth(si,c),sf=storeFill(si),bud=freshBudget(si,'both',null);
+ let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">${esc(s[1])} <span class="mut" style="font-weight:400">BC ${s[0]} · ${esc(s[6])} · ${s[5]} · ${s[2]} · ${esc(s[4])} · ${f0(s[8])} sqft · DOI cap ${s[10]}d</span></h2>
+  <div class="bar2">${radio('dcat',CATS.map((x,i)=>[String(i),x==='SHIRTS'?'Shirts':'T-shirts']),String(c))}<button class="b" id="sdClose">Close</button></div></div>
+  <h3>Store (all categories, STORE_CATEGORY_DELTA)</h3><div class="kpi">
+   <div><b>${f0(s[12])}</b><span>base stock</span></div>
+   <div title="${esc(HT.fNow)} (store level)"><b>${sf?pc(sf.now):'–'}</b><span>fill now (${f0(s[13])} units)</span></div>
+   <div title="${esc(HT.fJit)} (store level)"><b>${sf?pc(sf.jit):'–'}</b><span>fill after JIT (${f0(s[14])})</span></div>
+   <div title="${esc(HT.fillS)}"><b>${sf?pc(sf.ist):'–'}</b><span>fill after JIT + IST (${f0(s[15])})</span></div>
+   <div title="${esc(HT.bud)}"><b>${f0(bud.total)}</b><span>fresh budget${bud.total?' · Shirts '+bud.cats[0]+' · T-shirts '+bud.cats[1]:' · '+esc(bud.why)}</span></div></div>`;
+ if(!hh){el.innerHTML=h+`<div class="mut" style="margin-top:10px">No ${CATS[c]} health row for this store.</div></div>`;wireDetail();return}
+ const sk=storeStock[si].filter(r=>K[r[1]][1]===c&&skuOk(r[1]));
+ const cut=sk.filter(r=>r[6]).sort((p,q)=>q[4]-p[4]).slice(0,15),aged=sk.filter(r=>r[5]>120&&r[3]===0).sort((p,q)=>q[2]-p[2]).slice(0,15),top=sk.slice().sort((p,q)=>q[4]-p[4]).slice(0,10);
+ const mk=D.mixKeys[CATS[c]].filter(x=>hh.mix[x]),bi=MBENCH==='ideal'?0:2;
+ const mixObj=Object.fromEntries(mk.map(x=>[x,[hh.mix[x][bi]||0,hh.mix[x][1]||0]]));
+ const dev=mk.map(x=>{const m=hh.mix[x],o=(hh.mixOpt||{})[x]||[0,0];return {x,ideal:m[0],stock:m[1],sale:m[2]||0,io:o[0],ao:o[1],d:(m[1]-(m[bi]||0))}}).sort((p,q)=>Math.abs(q.d)-Math.abs(p.d));
+ const tip=`Ideal options = base stock (${f0(s[9])}) × category mix (${pc(hh.idealCat)}) ÷ depth (${hh.depth}) = ${hh.idealOpts}`;
+ h+=`<h3>${CATS[c]}</h3><div class="kpi">
+   <div title="${esc(HT.cbase)}"><b>${f0(hh.catBase)}</b><span>category base</span></div>
+   <div title="${esc(HT.fNow)}"><b>${pc(hh.fillNow)}</b><span>fill now (${f0(hh.inv)})</span></div>
+   <div title="${esc(HT.fJit)}. ROS 7d ${hh.ros7}/day × lead ${hh.lead}d, outward ${f0(hh.outward)}"><b>${pc(hh.fillJit)}</b><span>after JIT (${f0(hh.netJit)})</span></div>
+   <div title="${esc(HT.fIst)}"><b>${pc(hh.fillIst)}</b><span>after IST (${f0(hh.netIst)}) · IST +${f0(hh.istIn)} / −${f0(hh.istOut)}</span></div>
+   <div title="${esc(tip)}"><b>${hh.opts} / ${hh.idealOpts}</b><span>options / ideal (depth ${hh.depth})</span></div>
+   <div><b>${pc(hh.str)}</b><span>STR 30d</span></div><div><b>${hh.doi<0?'–':f0(hh.doi)}</b><span>DOI (cap ${s[10]})</span></div><div title="${esc(HT.cut)}"><b>${pc(hh.cut)}</b><span>cut-size options</span></div>
    <div><b>${pc(hh.fresh)}</b><span>fresh stock (≤${D.freshDays}d)</span></div><div><b>${pc(hh.aged)}</b><span>aged stock >120d</span></div><div><b>${hh.noSale}</b><span>options no sale 30d</span></div>
-   <div><b>₹${f0(hh.rev90)}</b><span>revenue 90d</span></div><div><b>${hh.target?pc(hh.actual/hh.target):'–'}</b><span>store MTD vs target</span></div></div>
-   <div class="row"><div class="grow">${bars(hh.mix,'Metafield mix vs ideal ('+(c===1?'collar | designs':'designs')+')',mk)}</div>
+   <div><b>₹${f0(hh.rev90)}</b><span>revenue 90d</span></div>
+   <div title="${esc(HT.ctgt)}. Category weight ${f1(hh.catTargetW)}% of the store target"><b>${hh.catTarget?'₹'+f0(hh.catTarget):'–'}</b><span>category target (month)</span></div>
+   <div title="${esc(HT.cach)}"><b class="${hh.catTarget?(hh.catTargetPct/100<DAYFRAC?'bad':'good'):''}">${hh.catTarget?f1(hh.catTargetPct)+'%':'–'}</b><span>category achieved · month gone ${pc(DAYFRAC)}</span></div>
+   <div title="Whole store: MTD revenue ÷ MTD target (MTD_TARGET_CLEAN), all categories"><b>${hh.target?pc(hh.actual/hh.target):'–'}</b><span>store MTD vs store target</span></div></div>
+  <div class="row"><div class="grow"><div class="bar2" style="justify-content:space-between;margin-top:8px">${radio('mbench',[['ideal','Ideal benchmark','Line = GS ideal metafield mix for this store'],['sales','Sales share','Line = this store\'s 90-day sales share by metafield bucket']],MBENCH)}</div>
+   ${bars(mixObj,'Metafield mix ('+(CATS[c]==='T-SHIRTS'?'collar | designs':'designs')+')',mk,'bar = stock share, line = '+(MBENCH==='ideal'?'ideal mix':'90-day sales share'))}
+   <details style="margin-top:6px"><summary class="mut" style="cursor:pointer">Deviation detail &amp; ideal options per meta combination</summary>
+   <table class="mini2"><thead><tr><th>Meta combination</th><th class="n">Ideal</th><th class="n">Sales 90d</th><th class="n">Stock</th><th class="n" title="Stock share − selected benchmark">Deviation</th>
+   <th class="n" title="Ideal options = base stock × category mix × meta ideal mix ÷ depth">Ideal opts</th><th class="n">Options</th><th class="n">Opt gap</th></tr></thead><tbody>${dev.map(r=>`<tr><td>${esc(r.x)}</td><td class="n">${pc(r.ideal)}</td><td class="n">${pc(r.sale)}</td><td class="n">${pc(r.stock)}</td>
+   <td class="n ${Math.abs(r.d)<.02?'mut':r.d>0?'bad':'good'}">${r.d>0?'+':''}${(r.d*100).toFixed(1)}pp</td><td class="n">${f1(r.io)}</td><td class="n">${r.ao}</td><td class="n ${r.io-r.ao>=1?'warn':''}">${f1(r.io-r.ao)}</td></tr>`).join('')}</tbody></table></details></div>
    <div class="grow">${bars(hh.col,'Colour mix vs cluster sales share')}</div></div>
-   <div class="row"><div class="grow">${bars(hh.band,'Price band: stock vs store sales share',D.bands)}</div>
+  <div class="row"><div class="grow">${bars(hh.band,'Price band: stock vs store sales share',D.bands)}</div>
    <div class="grow">${bars(Object.fromEntries(SZ.map((z,i)=>[z,[hh.size[0][i],hh.size[1][i]]]).filter(x=>x[1][0]||x[1][1])),'Size curve: stock vs store size sales',SZ.filter((z,i)=>hh.size[0][i]||hh.size[1][i]))}</div></div>
-   <div class="row"><div class="grow"><h3>Cut-size options (fix via IST / replen)</h3>${skuMini(cut)}</div><div class="grow"><h3>Aged, no sale 30d (candidates to move out)</h3>${skuMini(aged)}</div><div class="grow"><h3>Top sellers (ROS)</h3>${skuMini(top)}</div></div>`}
- el.innerHTML=h+'</div>';el.scrollIntoView({behavior:'smooth'});
+  <div class="row"><div class="grow"><h3>Cut-size options (fix via IST / replen)</h3>${skuMini(cut)}</div><div class="grow"><h3>Aged, no sale 30d (move out)</h3>${skuMini(aged)}</div><div class="grow"><h3>Top sellers (ROS)</h3>${skuMini(top)}</div></div>`;
+ el.innerHTML=h+'</div>';wireDetail();
 }
-const skuMini=rows=>rows.length?`<table><tbody>${rows.map(r=>`<tr class="click" onclick="showSku('${K[r[1]][0]}')"><td>${K[r[1]][0]}</td><td class="mut">${esc(W[K[r[1]][10]])}</td><td class="n">${r[2]}u</td><td class="n">L30 ${r[3]}</td><td class="n">${r[5]}d</td></tr>`).join('')}</tbody></table>`:'<div class="mut">none</div>';
+function wireDetail(){const el=document.getElementById('storeDetail');
+ wireRadio(el,'dcat',v=>{DCAT=+v;refresh2()});wireRadio(el,'mbench',v=>{MBENCH=v;refresh2()});
+ const b=document.getElementById('sdClose');if(b)b.onclick=()=>{F.stores=new Set();refresh2()}}
 
-// ---------------------------------------------------------------- TAB 2 allocation run (same allocator + pack rules as the basket)
-const WLAB={ros:'Expected sell-through',str:'Store STR',mix_gap:'Metafield gap closed',option_gap:'Option gap (fresh)',fill_gap:'Category fill room',
- fresh_need:'Store freshness need',target_gap:'Store behind target',colour_gap:'Colour gap closed',price_gap:'Price-band gap closed'};
-const WTIP={ros:'Share of the line expected to sell within the days of cover at this store',str:'Store category sell-through vs the best store',
- mix_gap:'Share of the line that fills the store\'s metafield-bucket gap',option_gap:'Fresh line into a store that is below its ideal option count',
- fill_gap:'Share of the line that fits within the store\'s category fill ceiling',fresh_need:'1 − share of fresh stock at the store',
- target_gap:'How far the store is behind its MTD sales target',colour_gap:'Share of the line that fills the store\'s colour gap',
- price_gap:'Share of the line that fills the store\'s price-band gap (adjacent band counts half)'};
-document.getElementById('wts').innerHTML=Object.entries(D.weights).map(([k,v])=>`<label title="${esc(WTIP[k]||'')}">${WLAB[k]||k}<input type="number" step="0.05" data-k="${k}" value="${v}"></label>`).join('');
-document.getElementById('aCover').value=D.alloc.days_cover;document.getElementById('aFill').value=D.alloc.fill_ceiling;
-const cfgNow=()=>({cover:+document.getElementById('aCover').value||30,fill:+document.getElementById('aFill').value||140});
-document.querySelectorAll('#wts input,#aCover,#aFill').forEach(i=>i.onchange=()=>{if(CUR!==null)renderPlacement()});
-let LAST=[];
-function skuPass(k){const a=K[k];if(a[32]<0||(sum(a[20])+sum(a[21])+a[43]+a[44])<=0)return false;if(!catSel().includes(a[1]))return false;if(F.band&&W[a[28]]!==F.band)return false;
- if(F.fresh==='new'&&a[22]===2)return false;if(F.fresh==='old'&&a[22]!==2)return false;if(F.fresh==='fresh'){const d=daysSince(a[29]);if(d<0||d>D.freshDays)return false}return true}
+// ---------------------------------------------------------------- TAB 2 fresh allocation run
+const WLAB={ros:'Expected sell-through',str:'Store STR',mix_gap:'Metafield gap closed',option_gap:'Option gap (fresh)',fill_gap:'Fill room used',
+ fresh_need:'Store freshness need',target_gap:'Store behind target',colour_gap:'Colour gap closed',price_gap:'Price-band gap closed',replen_need:'Replen need (SKU tab)'};
+const WTIP={ros:'Share of the line expected to sell within the days of cover at this store (projected ROS × days ÷ units). The biggest driver: send what will sell',
+ str:'Store category sell-through relative to the best store in scope: faster stores rank higher',
+ mix_gap:'Share of the line that fills the store\'s metafield-bucket gap (ideal − stock share × base)',option_gap:'1 when it is a fresh line into a store below its ideal option count',
+ fill_gap:'Share of the line that fits the store\'s room (fill ceiling on the SKU tab, fresh budget here)',fresh_need:'1 − share of fresh stock at the store: stale stores get new styles first',
+ target_gap:'How far the category is behind target for the share of the month gone (FACT_PARETO category target)',colour_gap:'Share of the line that fills the store\'s colour gap vs cluster sales',
+ price_gap:'Share of the line that fills the store\'s price-band gap (adjacent band counts half)',replen_need:'Replen lines only: 1 if the style is size-broken at the store, else how far it is below '+D.alloc.days_cover+' days of cover (fast seller)'};
+const wInputs=()=>{document.getElementById('wts').innerHTML=Object.entries(D.weights).map(([k,v])=>`<label title="${esc(WTIP[k]||'')}">${WLAB[k]||k}<input type="number" step="0.05" min="0" data-k="${k}" value="${v}"></label>`).join('');
+ document.querySelectorAll('#wts input').forEach(i=>i.onchange=()=>{if(CUR!==null)renderPlacement()})};
+wInputs();document.getElementById('wReset').onclick=e=>{e.preventDefault();wInputs();if(CUR!==null)renderPlacement()};
+document.getElementById('aCover').value=D.alloc.days_cover;
+const cfgNow=()=>({cover:+document.getElementById('aCover').value||D.alloc.days_cover,fill:D.alloc.fill_ceiling});
+document.getElementById('aCover').onchange=()=>{if(CUR!==null)renderPlacement()};
+const R={scope:'filtered',store:'',clusters:new Set(),units:'auto',manual:100,cat:'both'};
+function runUI(){
+ document.getElementById('rScope').innerHTML=radio('rscope',[['filtered','Filtered stores','The stores matching the filters at the top of this tab'],['store','One store','Run for a single store'],['cluster','Clusters','Run for every store in the chosen cluster(s)']],R.scope);
+ const ss=S.map((s,i)=>[i,s[1]]).sort((p,q)=>p[1].localeCompare(q[1]));
+ document.getElementById('rScopeSel').innerHTML=R.scope==='store'?`<select id="rStore" style="width:100%"><option value="">Pick a store…</option>${ss.map(([i,n])=>`<option value="${i}" ${String(i)===R.store?'selected':''}>${esc(n)}</option>`).join('')}</select>`
+  :R.scope==='cluster'?`<select id="rClus" multiple size="5" style="width:100%" title="Ctrl / Cmd-click for several">${uniq(6).map(x=>`<option ${R.clusters.has(x)?'selected':''}>${esc(x)}</option>`).join('')}</select>`
+  :`<span class="hint">${storesFiltered().length} stores from the top filters</span>`;
+ document.getElementById('rUnits').innerHTML=radio('runits',[['auto','Auto ('+Math.round(D.fresh.fill_budget*100)+'% budget)','Units = '+Math.round(D.fresh.fill_budget*100)+'% × base stock − net stock after JIT + IST; stores at or above it get nothing'],['manual','Manual','You set the units per store; the fill check is skipped']],R.units);
+ document.getElementById('rUnitsSel').innerHTML=R.units==='manual'?`<label>Units per store <input id="rManual" type="number" min="0" step="12" value="${R.manual}" style="width:80px"></label>`:'<span class="hint">split by category gap, see the Fresh budget column</span>';
+ document.getElementById('rCat').innerHTML=radio('rcat',[['both','Both','Split between Shirts and T-shirts by category gap (category base − net stock after IST)'],['0','Shirts','Only Shirts'],['1','T-shirts','Only T-shirts']],R.cat);
+ const root=document.getElementById('t-alloc');
+ wireRadio(root,'rscope',v=>{R.scope=v;runUI()});wireRadio(root,'runits',v=>{R.units=v;runUI()});wireRadio(root,'rcat',v=>{R.cat=v;runPreview()});
+ const st=document.getElementById('rStore');if(st)st.onchange=()=>{R.store=st.value;runPreview()};
+ const cl=document.getElementById('rClus');if(cl)cl.onchange=()=>{R.clusters=new Set([...cl.selectedOptions].map(o=>o.value));runPreview()};
+ const mn=document.getElementById('rManual');if(mn)mn.oninput=()=>{R.manual=Math.max(0,+mn.value||0);runPreview()};
+ runPreview()}
+function scopeStores(){if(R.scope==='store')return R.store===''?[]:[+R.store];
+ if(R.scope==='cluster'){const out=[];for(let si=0;si<NS;si++)if(R.clusters.has(S[si][6]))out.push(si);return out}return storesFiltered()}
+function budgets(sts){const m=new Map(),per=[];for(const si of sts){const b=freshBudget(si,R.cat,R.units==='manual'?R.manual:null);per.push([si,b]);
+ if(b.cats[0])m.set(si*2,b.cats[0]);if(b.cats[1])m.set(si*2+1,b.cats[1])}return {m,per}}
+function poolSkus(){const cs=R.cat==='both'?[0,1]:[+R.cat];return Object.keys(POOL).map(Number).filter(k=>cs.includes(K[k][1])&&skuOk(k))}
+function runPreview(){const el=document.getElementById('aPreview');if(!el)return;const sts=scopeStores(),{per}=budgets(sts),q=per.filter(x=>sum(x[1].cats)>0);
+ el.textContent=sts.length?`${sts.length} stores in scope · ${q.length} get fresh units · budget ${f0(sum(q.map(x=>sum(x[1].cats))))} units · ${poolSkus().length} fresh-pool SKUs`:'Pick the stores to run for.'}
+let LAST=[],LASTPER=[];
 document.getElementById('aRun').onclick=()=>{
- const t0=performance.now(),sts=storesFiltered(),ks=[];for(let k=0;k<K.length;k++)if(skuPass(k))ks.push(k);
- const out=allocate(ks,sts,document.getElementById('aMode').value,cfgNow(),weights());
- LAST=out;renderAlloc(out,ks.length,sts.length,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;
+ const t0=performance.now(),sts=scopeStores(),{m,per}=budgets(sts),use=per.filter(x=>sum(x[1].cats)>0).map(x=>x[0]),ks=poolSkus();
+ const out=use.length?allocate(ks,use,'fresh',cfgNow(),weights(),{fresh:true,budget:m}):[];
+ LAST=out;LASTPER=per;renderAlloc(out,ks,sts,per,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;
 };
-function renderAlloc(out,nk,ns,ms){
- const units=sum(out.map(r=>r.units)),n=sum(out.filter(r=>!r.z).map(r=>r.units));
- document.getElementById('allocSum').innerHTML=`<div class="kpi"><div><b>${f0(units)}</b><span>units allocated</span></div><div><b>${new Set(out.map(r=>r.si)).size}</b><span>stores</span></div>
- <div><b>${new Set(out.map(r=>r.k)).size}</b><span>SKUs (of ${nk} eligible)</span></div><div><b>${out.filter(r=>r.type==='FRESH').length} / ${out.filter(r=>r.type==='REPLEN').length}</b><span>fresh / replen lines</span></div>
- <div><b>${f0(sum(out.filter(r=>r.packType==='PREPACK').map(r=>r.packs)))}</b><span>prepacks sent</span></div><div><b>${f0(n)} / ${f0(units-n)}</b><span>from WH North / South</span></div>
- <div><b>${f0(sum(out.map(r=>r.sold)))}</b><span>expected sales in ${D.alloc.days_cover}d</span></div><div><b>${(ms/1000).toFixed(1)}s</b><span>${ns} stores evaluated</span></div></div>`;
+function renderAlloc(out,ks,sts,per,ms){
+ const units=sum(out.map(r=>r.units)),n=sum(out.filter(r=>!r.z).map(r=>r.units)),bud=sum(per.map(x=>sum(x[1].cats)));
+ const used={};out.forEach(r=>{const key=r.si*2+K[r.k][1];used[key]=(used[key]||0)+r.units});
+ const noProj=ks.filter(k=>K[k][32]<0).length,bad=out.filter(r=>!r.ok).length;
+ document.getElementById('allocSum').innerHTML=`<div class="kpi"><div><b>${f0(units)}</b><span>units allocated</span></div>
+ <div title="Sum of the store budgets (auto or manual)"><b>${f0(bud)}</b><span>budget · ${bud?pc(units/bud):'–'} used</span></div>
+ <div><b>${new Set(out.map(r=>r.si)).size} / ${per.filter(x=>sum(x[1].cats)).length}</b><span>stores served / with budget (${sts.length} in scope)</span></div>
+ <div><b>${new Set(out.map(r=>r.k)).size}</b><span>SKUs (of ${ks.length} in the fresh pool)</span></div>
+ <div><b>${f0(sum(out.filter(r=>K[r.k][1]===0).map(r=>r.units)))} / ${f0(sum(out.filter(r=>K[r.k][1]===1).map(r=>r.units)))}</b><span>units Shirts / T-shirts</span></div>
+ <div><b>${f0(sum(out.filter(r=>r.packType==='PREPACK').map(r=>r.packs)))}</b><span>prepacks (2 per line)</span></div><div><b>${f0(n)} / ${f0(units-n)}</b><span>from WH North / South</span></div>
+ <div><b>${f0(sum(out.map(r=>r.sold)))}</b><span>expected sales in ${cfgNow().cover}d</span></div>
+ <div title="Lines whose units / codes were all on hand when taken"><b class="${bad?'bad':'good'}">${bad?bad+' ✗':'all ✓'}</b><span>fulfilment check</span></div>
+ <div><b>${(ms/1000).toFixed(1)}s</b><span>run time</span></div></div>
+ ${noProj?`<div class="hint" style="margin-top:4px">${noProj} fresh-pool SKUs have no demand projection (no similar SKUs) and were skipped.</div>`:''}
+ ${!out.length?'<div class="warn" style="margin-top:6px">Nothing allocated: no store in scope has budget (fill after JIT + IST already ≥ '+Math.round(D.fresh.fill_budget*100)+'%), or no fresh SKU clears the demand bar.</div>':''}
+ <details style="margin-top:8px"><summary class="mut" style="cursor:pointer">Budget per store (${per.length})</summary><div class="scroll" style="max-height:320px"><table class="mini2"><thead><tr><th>Store</th><th>Cluster</th>
+  <th class="n" title="Store base stock (STORE_CATEGORY_DELTA)">Base</th><th class="n" title="${esc(HT.fillS)}">Fill after IST</th><th class="n">Budget</th><th class="n">Shirts budget → used</th><th class="n">T-shirts budget → used</th><th>Note</th></tr></thead><tbody>${
+  per.map(([si,b])=>{const sf=storeFill(si);return `<tr><td>${esc(S[si][1])}</td><td>${esc(S[si][6])}</td><td class="n">${f0(S[si][12])}</td><td class="n">${sf?pc(sf.ist):'–'}</td><td class="n">${f0(b.total)}</td>
+  <td class="n">${b.cats[0]} → ${used[si*2]||0}</td><td class="n">${b.cats[1]} → ${used[si*2+1]||0}</td><td class="mut">${esc(b.why||'')}</td></tr>`}).join('')}</tbody></table></div></details>`;
  const el=document.getElementById('allocTbl');
- el.innerHTML=(out.length>2000?'<div class="hint">Showing the top 2,000 of '+f0(out.length)+' lines (the CSV has all of them).</div>':'')+allocTable(out,2000);sortable(el);
+ el.innerHTML=(out.length>2000?'<div class="hint">Showing the top 2,000 of '+f0(out.length)+' lines (the CSV has all of them).</div>':'')+(out.length?allocTable(out,2000):'');sortable(el);
 }
-document.getElementById('aCsv').onclick=()=>downloadAlloc(LAST,'topwear_allocation');
+document.getElementById('aCsv').onclick=()=>downloadAlloc(LAST,'topwear_fresh_allocation');
 
 // ---------------------------------------------------------------- TAB 3 nudges
-// ---------------------------------------------------------------- TAB 3 nudges
-function nudges(){
- const inw=[];for(let k=0;k<K.length;k++){const a=K[k],d=daysSince(a[29]);if(d<0||d>D.nudgeDays)continue;inw.push({k,d,wh:a[18]+a[19]+(a[43]+a[44])*(a[42]||0)})}   // loose + prepack units
- inw.sort((p,q)=>(K[p.k][30]-K[q.k][30])||(q.d-p.d));
- const pending=inw.filter(x=>!K[x.k][30]&&x.wh>0);
- const alerts=[];
+const NST={pend:['Pending 3d+','st-pend','In the WH 3+ days, has stock, not allocated offline yet: act now'],
+ new:['Pending','st-new','Inwarded in the last 2 days, has stock, not allocated offline yet'],
+ done:['Allocated','st-done','Marked "Offline Allocated" in SKU_LIVE_MECH_V2'],none:['No WH stock','st-none','Inwarded but no loose or prepack units left in the WH']};
+let NCAT='all';const AF={cluster:'',store:'',cat:'',type:''};let ALERTS=[];
+function buildAlerts(){ALERTS=[];
  for(let si=0;si<NS;si++)for(let c=0;c<CATS.length;c++){const h=D.health[si][c];if(!h)continue;const s=S[si];
-  if(h.fill>=0&&h.fill<.75)alerts.push([si,c,'Low fill',pc(h.fill)+' of base','bad']);
-  if(h.cut>.35)alerts.push([si,c,'Broken sizes',pc(h.cut)+' of options cut','bad']);
-  if(h.aged>.35)alerts.push([si,c,'Aged stock',pc(h.aged)+' older than 120d','warn']);
-  if(h.doi>s[10]*1.5)alerts.push([si,c,'Overstock',f0(h.doi)+' DOI vs cap '+s[10],'warn']);
-  if(h.fresh<.1&&h.stock>0)alerts.push([si,c,'No fresh stock',pc(h.fresh)+' fresh','warn'])}
- document.getElementById('nudgeOut').innerHTML=`<div class="card"><h2>New WH inwards (last ${D.nudgeDays} days): ${pending.length} not yet allocated offline</h2>
- <div class="hint">From SKU_LIVE_MECH_V2 (WH live / inward date, offline allocated status) and B2B_JOURNEY. Click a row to see the best stores for that SKU.</div>
- <div class="scroll"><table><thead><tr><th></th><th>SKU</th><th>Cat</th><th>Name</th><th>Colour</th><th class="n">MRP</th><th>WH inward</th><th class="n">Days in WH</th><th class="n" title="Loose + prepack units in the North WH">WH N</th><th class="n" title="Loose + prepack units in the South WH">WH S</th><th>Offline allocated</th><th class="n">Stores sent</th><th class="n">Top-10 store proj 30d</th></tr></thead><tbody>${
+  if(h.fillIst>=0&&h.fillIst<.75)ALERTS.push([si,c,'Low fill',pc(h.fillIst)+' of category base after JIT + IST','bad']);
+  if(h.cut>.35)ALERTS.push([si,c,'Broken sizes',pc(h.cut)+' of options cut','bad']);
+  if(h.catTarget&&h.catTargetPct/100<DAYFRAC*0.8)ALERTS.push([si,c,'Behind target',f1(h.catTargetPct)+'% of category target vs '+pc(DAYFRAC)+' of month','bad']);
+  if(h.aged>.35)ALERTS.push([si,c,'Aged stock',pc(h.aged)+' older than 120d','warn']);
+  if(h.doi>s[10]*1.5)ALERTS.push([si,c,'Overstock',f0(h.doi)+' DOI vs cap '+s[10],'warn']);
+  if(h.fresh<.1&&h.stock>0)ALERTS.push([si,c,'No fresh stock',pc(h.fresh)+' fresh','warn'])}}
+const ATIP={'Low fill':'Category net stock after JIT + IST below 75% of category base','Broken sizes':'More than 35% of the store\'s options are size-broken',
+ 'Behind target':'Category achievement below 80% of the share of the month gone','Aged stock':'More than 35% of stock older than 120 days',
+ 'Overstock':'Days of inventory above 1.5 × the store DOI cap','No fresh stock':'Under 10% of stock inwarded in the last '+D.freshDays+' days'};
+function nudges(){
+ const inw=[];for(let k=0;k<K.length;k++){const a=K[k],d=daysSince(a[29]);if(d<0||d>D.nudgeDays)continue;if(NCAT!=='all'&&a[1]!==+NCAT)continue;
+  const wh=a[18]+a[19]+(a[43]+a[44])*(a[42]||0),st=a[30]?'done':wh<=0?'none':d>=3?'pend':'new';inw.push({k,d,wh,st})}
+ const ord={pend:0,new:1,none:2,done:3};inw.sort((p,q)=>(ord[p.st]-ord[q.st])||(q.d-p.d));
+ const cnt=x=>inw.filter(r=>r.st===x).length;
+ const NT={st:'Allocation status (see legend)',sku:'SKU group',inw:'WH live / inward date (SKU_LIVE_MECH_V2)',days:'Days since WH inward',
+  n:'Loose + prepack units in the North WH',s:'Loose + prepack units in the South WH',sent:'Stores the SKU was sent to via B2B in the last 60 days',
+  top:'Projected units the 10 best stores for this SKU would sell in 30 days (sum of the top-10 store projections × 30)'};
+ document.getElementById('nudgeOut').innerHTML=`<div class="card"><div class="bar2" style="justify-content:space-between"><h2 style="margin:0">New WH inwards · last ${D.nudgeDays} days</h2>
+  ${radio('ncat',[['all','All'],['0','Shirts'],['1','T-shirts']],NCAT)}</div>
+ <div class="legend">${['pend','new','none','done'].map(x=>`<span title="${esc(NST[x][2])}"><span class="tag ${NST[x][1]}">${NST[x][0]}</span> ${cnt(x)}</span>`).join('')}<span class="mut">Hover a chip or header for its meaning. Click a row to open the SKU.</span></div>
+ <div class="scroll"><table><thead><tr>${th('Status',NT.st)}${th('SKU',NT.sku)}${th('Cat')}${th('Name')}${th('Colour')}${th('MRP','','n')}${th('WH inward',NT.inw)}${th('Days in WH',NT.days,'n')}${th('WH N',NT.n,'n')}${th('WH S',NT.s,'n')}${th('Stores sent',NT.sent,'n')}${th('Top-10 store proj 30d',NT.top,'n')}</tr></thead><tbody>${
  inw.map(x=>{const a=K[x.k];let tp='–';if(a[32]>=0){const ps=[];for(let si=0;si<NS;si++)ps.push(proj(x.k,si));ps.sort((p,q)=>q-p);tp=f0(ps.slice(0,10).reduce((p,q)=>p+q,0)*30)}
- const urgent=!a[30]&&x.wh>0&&x.d>=3;return `<tr class="click" onclick="showSku('${a[0]}')"><td>${urgent?'<span class="tag" style="background:#fee2e2;color:#991b1b">ACT</span>':''}</td><td>${a[0]}</td><td>${CATS[a[1]]}</td><td>${esc(a[2]).slice(0,40)}</td><td>${esc(W[a[10]])}</td>
- <td class="n">${f0(a[13])}</td><td>${a[29]}</td><td class="n">${x.d}</td><td class="n">${f0(a[18]+a[43]*(a[42]||0))}</td><td class="n">${f0(a[19]+a[44]*(a[42]||0))}</td><td>${a[30]?'<span class="good">Yes</span>':'<span class="bad">No</span>'}</td><td class="n">${a[33]}</td><td class="n">${tp}</td></tr>`}).join('')}</tbody></table></div></div>
- <div class="card"><h2>Store alerts (${alerts.length})</h2><div class="scroll"><table><thead><tr><th>Store</th><th>Cluster</th><th>Category</th><th>Alert</th><th>Detail</th></tr></thead><tbody>${
- alerts.map(([si,c,t,d,cl])=>`<tr class="click" onclick="tabGo('alloc');document.getElementById('fCat').value='${c}';F.cat='${c}';refresh2();storeDetail(${si})"><td>${esc(S[si][1])}</td><td>${esc(S[si][6])}</td><td>${CATS[c]}</td><td class="${cl}">${t}</td><td>${d}</td></tr>`).join('')}</tbody></table></div></div>`;
- document.querySelectorAll('#nudgeOut .scroll').forEach(sortable);
+ return `<tr class="click" onclick="showSku('${a[0]}')"><td data-v="${ord[x.st]}"><span class="tag ${NST[x.st][1]}" title="${esc(NST[x.st][2])}">${NST[x.st][0]}</span></td><td>${a[0]}</td><td>${CATS[a[1]]}</td><td>${esc(a[2]).slice(0,40)}</td><td>${esc(W[a[10]])}</td>
+ <td class="n">${f0(a[13])}</td><td>${a[29]}</td><td class="n">${x.d}</td><td class="n">${f0(a[18]+a[43]*(a[42]||0))}</td><td class="n">${f0(a[19]+a[44]*(a[42]||0))}</td><td class="n">${a[33]}</td><td class="n">${tp}</td></tr>`}).join('')||'<tr><td colspan="12" class="mut">No inwards in this window.</td></tr>'}</tbody></table></div></div>
+ <div class="card" id="alertCard"></div>`;
+ wireRadio(document.getElementById('nudgeOut'),'ncat',v=>{NCAT=v;nudges()});
+ document.querySelectorAll('#nudgeOut .scroll').forEach(sortable);renderAlerts();
+}
+function renderAlerts(){
+ const m=(r,skip)=>(skip==='cluster'||!AF.cluster||S[r[0]][6]===AF.cluster)&&(skip==='store'||AF.store===''||r[0]===+AF.store)&&(skip==='cat'||AF.cat===''||r[1]===+AF.cat)&&(skip==='type'||!AF.type||r[2]===AF.type);
+ // cascading: each list only offers values present under the filters to its left
+ const clus=[...new Set(ALERTS.map(r=>S[r[0]][6]))].sort(),inC=ALERTS.filter(r=>!AF.cluster||S[r[0]][6]===AF.cluster);
+ const sts=[...new Set(inC.map(r=>r[0]))].sort((p,q)=>S[p][1].localeCompare(S[q][1]));if(AF.store!==''&&!sts.includes(+AF.store))AF.store='';
+ const inS=inC.filter(r=>AF.store===''||r[0]===+AF.store),cats=[...new Set(inS.map(r=>r[1]))].sort();if(AF.cat!==''&&!cats.includes(+AF.cat))AF.cat='';
+ const inK=inS.filter(r=>AF.cat===''||r[1]===+AF.cat),types=[...new Set(inK.map(r=>r[2]))].sort();if(AF.type&&!types.includes(AF.type))AF.type='';
+ const rows=ALERTS.filter(r=>m(r));
+ const el=document.getElementById('alertCard');
+ el.innerHTML=`<h2>Store alerts (${rows.length} of ${ALERTS.length})</h2><div class="filters">
+  <select id="aClus"><option value="">All clusters</option>${clus.map(x=>`<option ${x===AF.cluster?'selected':''}>${esc(x)}</option>`).join('')}</select>
+  <select id="aStore"><option value="">All stores</option>${sts.map(si=>`<option value="${si}" ${String(si)===AF.store?'selected':''}>${esc(S[si][1])}</option>`).join('')}</select>
+  <select id="aCat"><option value="">All categories</option>${cats.map(c=>`<option value="${c}" ${String(c)===AF.cat?'selected':''}>${CATS[c]}</option>`).join('')}</select>
+  <select id="aType"><option value="">All alert types</option>${types.map(t=>`<option ${t===AF.type?'selected':''} title="${esc(ATIP[t])}">${t}</option>`).join('')}</select>
+  <button class="b" id="aReset">Reset</button><span class="hint">Click an alert to open that store's health for the category.</span></div>
+ <div class="legend">${Object.entries(ATIP).map(([t,d])=>`<span title="${esc(d)}" class="chip">${t}</span>`).join('')}</div>
+ <div class="scroll"><table><thead><tr>${th('Store')}${th('Cluster')}${th('Category')}${th('Alert','Hover an alert type chip above for its rule')}${th('Detail')}</tr></thead><tbody>${
+ rows.map(([si,c,t,d,cl])=>`<tr class="click" onclick="openStore(${si},${c})"><td>${esc(S[si][1])}</td><td>${esc(S[si][6])}</td><td>${CATS[c]}</td><td class="${cl}" title="${esc(ATIP[t])}">${t}</td><td>${d}</td></tr>`).join('')||'<tr><td colspan="5" class="mut">No alerts for these filters.</td></tr>'}</tbody></table></div>`;
+ [['aClus','cluster'],['aStore','store'],['aCat','cat'],['aType','type']].forEach(([id,k],i,arr)=>document.getElementById(id).onchange=e=>{AF[k]=e.target.value;
+  for(const [,k2] of arr.slice(i+1))AF[k2]='';renderAlerts()});
+ document.getElementById('aReset').onclick=()=>{Object.assign(AF,{cluster:'',store:'',cat:'',type:''});renderAlerts()};
+ sortable(el.querySelector('.scroll'));
 }
 
-document.getElementById('howAlloc').innerHTML=HOW_ALLOC;
-refresh2();nudges();renderRecent();
+document.getElementById('howAlloc').innerHTML=HOW_FRESH;
+runUI();refresh2();buildAlerts();nudges();renderRecent();
 const hq=location.hash.slice(1);if(hq&&idx[hq.toUpperCase()]!==undefined)showSku(hq);
 </script></body></html>
