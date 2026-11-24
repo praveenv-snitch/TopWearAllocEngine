@@ -166,7 +166,7 @@ DEMAND = {"recency_half_life_days": 365,     # ~1-year half-life (settings.yaml 
 DOI_CAP_STATES = {"KARNATAKA", "DELHI", "HARYANA"}  # WH states: 60 days cap, else 90 (as longtail SQL)
 ALLOC_DEFAULT_WEIGHTS = {"ros": 0.30, "str": 0.15, "mix_gap": 0.15, "option_gap": 0.10,
                          "fill_gap": 0.10, "fresh_need": 0.05, "target_gap": 0.05, "colour_gap": 0.05,
-                         "price_gap": 0.05}
+                         "price_gap": 0.05, "replen_need": 0.10}   # replen_need only scores REPLEN lines (SKU tab)
 # Size packs (units per size in the order of SIZES). Prepack ratios = prepack_ratio in store_replen_prepack*.sql.
 PACKS = {
     "fresh_set": [1, 2, 3, 3, 2, 1, 0, 0, 0, 0],     # fresh loose: one 12-unit size set XS1 S2 M3 L3 XL2 XXL1
@@ -178,6 +178,10 @@ PACKS = {
     "fresh_prepacks": 2,                              # fresh: max 2 prepacks of a style per store
     "replen_prepacks_max": 2,                         # replen: 1 or 2 whole packs, never split
 }
+# Fresh-pool run (Allocation tab): a store gets fresh units only while its fill after JIT + IST is below
+# fill_budget x base stock; the units (fill_budget x base - net stock) are split between Shirts and T-shirts by
+# category gap (category base - category net stock), each category capped at fill_budget x its category base.
+FRESH_RUN = {"fill_budget": 1.10, "min_proj_30d": 2}
 ALLOC = {"days_cover": 30,           # days of projected sales a line should cover
          "fill_ceiling": 140}       # % of base stock x ideal category mix; network median fill is ~130% today
 
