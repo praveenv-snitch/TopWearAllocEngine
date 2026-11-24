@@ -8,4 +8,5 @@ SELECT UPPER(SKU)                                                               
        SUM(UNITS_ON_HAND)                                                                  AS UNITS
 FROM SNITCH_DB.MAPLEMONK.LIVE_INV_WAREHOUSE_OFFLINE_REPLEN
 WHERE UPPER(SKU) LIKE 'PP%' AND COALESCE(UNITS_ON_HAND, 0) > 0
+  AND UPPER(SKU) NOT REGEXP '^PP[0-9]+-(4BSFS|4MBGS|4BRN|4BPL).*'   -- plus-size packs excluded
 GROUP BY 1, 2, 3, 4
