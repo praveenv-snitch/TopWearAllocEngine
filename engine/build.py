@@ -249,6 +249,11 @@ def main():
         if v:
             used[k] = v
 
+    # store had the style before but has no stock / JIT now ("repeat" in store_avail.py): [si, k] uint16 pairs
+    zr = store_sku[(store_sku["INV"] + store_sku["JIT"] <= 0) & store_sku["BC"].isin(st_idx) & store_sku["SKU"].isin(ki)]
+    rep = np.array([[st_idx[int(b)], ki[s_]] for b, s_ in zip(zr["BC"], zr["SKU"])], np.uint16).reshape(-1, 2)
+    repeat_b64 = base64.b64encode(rep.tobytes()).decode()
+
     store_out, health_out = [], []
     for i, r in store_rows.iterrows():
         store_out.append([int(r.BC), _s(r.STORE_NAME), _s(r.STORE_TYPE), _s(r.STATE), _s(r.CITY),
@@ -268,7 +273,7 @@ def main():
         "newDays": C.NEW_SKU_DAYS, "nudgeDays": C.NUDGE_DAYS, "freshDays": C.FRESH_DAYS,
         "words": list(words), "stores": store_out, "health": health_out, "skus": skus, "nb": nb_out, "nbVis": nb_vis, "nbMeta": nb_meta, "nbW": NB_W,
         "packs": C.PACKS, "pool": {str(k): v for k, v in pool.items()}, "ppCodes": {str(k): v for k, v in used.items()},
-        "fresh": C.FRESH_RUN, "calibPct": C.SIM["calibration_percentile"], "stock": stock_b64, "stockW": 19,
+        "fresh": C.FRESH_RUN, "repeat": repeat_b64, "calibPct": C.SIM["calibration_percentile"], "stock": stock_b64, "stockW": 19,
         "nStores": len(st_bc),
         "proj": base64.b64encode(demand.pack_uint8(proj)).decode(),
         "evid": base64.b64encode(ev_packed.tobytes()).decode(), "evidW": int(ev_packed.shape[1]),
