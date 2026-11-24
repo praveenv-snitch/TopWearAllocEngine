@@ -48,10 +48,10 @@ city AS (
            ANY_VALUE(STORE_STATUS) STORE_STATUS
     FROM SNITCH_DB.MAPLEMONK.STORE_CLUSTERS GROUP BY 1
 ),
-tgt AS (
+tgt AS (   -- MTD_TARGET_CLEAN holds one row per store per month = full-month target; MTD = pro-rated to yesterday
     SELECT TRY_TO_NUMBER(BRANCH_CODE) bc,
-           MAX(IFF(TARGET_DATE = DATEADD(DAY, -1, CURRENT_DATE()), CUMULATIVE_TARGET_MTD, NULL)) TARGET_MTD,
-           MAX(CUMULATIVE_TARGET_MTD)                                       TARGET_MONTH
+           MAX(TRY_TO_NUMBER(REGEXP_REPLACE(TRIM(CUMULATIVE_TARGET_MTD::VARCHAR), '[^0-9.]', ''), 18, 2)) TARGET_MONTH,
+           MAX(TRY_TO_NUMBER(REGEXP_REPLACE(TRIM(CUMULATIVE_TARGET_MTD::VARCHAR), '[^0-9.]', ''), 18, 2)) * DAY(DATEADD(DAY, -1, CURRENT_DATE())) / DAY(LAST_DAY(DATEADD(DAY, -1, CURRENT_DATE()))) TARGET_MTD
     FROM SNITCH_DB.MAPLEMONK.MTD_TARGET_CLEAN
     WHERE DATE_TRUNC('MONTH', TARGET_DATE) = DATE_TRUNC('MONTH', DATEADD(DAY, -1, CURRENT_DATE()))
     GROUP BY 1
@@ -69,7 +69,8 @@ scd_store AS (   -- store level (all categories): current fill / after JIT / aft
            SUM(D_INV) + SUM(D_JIT) + SUM(D_IST_IN) - SUM(D_ROS7) * MAX(D_LEAD) - SUM(D_OUTWARD) - SUM(D_IST_OUT)     S_NET_IST
     FROM scd GROUP BY 1
 ),
-ptgt AS (   -- category target (FACT_PARETO_TARGET_PERFORMANCE_SUMMARY, store wise, this month)
+ptgt AS (   -- category weight + category revenue this month (FACT_PARETO_TARGET_PERFORMANCE_SUMMARY, store wise).
+            -- CATEGORY_TARGET is a full-month figure; category MTD target = it pro-rated to yesterday (computed below).
     SELECT TRY_TO_NUMBER(LOCATION_ID) bc, UPPER(CATEGORY) CATEGORY,
            MAX(STORE_MONTHLY_TARGET) STORE_MONTH_TARGET, MAX(WEIGHTED_CAT_TARGET_PCT) CAT_TARGET_WEIGHT,
            MAX(CATEGORY_TARGET) CAT_TARGET, MAX(TARGET_PCT_ACHIEVED) CAT_TARGET_PCT
@@ -96,7 +97,9 @@ SELECT s.bc AS BC, s.STORE_NAME, s.STORE_TYPE, s.STATE, s.CITY,
        t.TARGET_MTD, t.TARGET_MONTH, a.ACTUAL_MTD,
        d.D_INV, d.D_JIT, d.D_IST_IN, d.D_IST_OUT, d.D_ROS7, d.D_LEAD, d.D_OUTWARD, d.D_CAT_BASE,
        ds.S_BASE, ds.S_INV, ds.S_NET_JIT, ds.S_NET_IST,
-       pt.STORE_MONTH_TARGET, pt.CAT_TARGET_WEIGHT, pt.CAT_TARGET, pt.CAT_TARGET_PCT,
+       pt.STORE_MONTH_TARGET, pt.CAT_TARGET_WEIGHT, pt.CAT_TARGET AS CAT_TARGET_MONTH,
+       pt.CAT_TARGET * DAY(DATEADD(DAY, -1, CURRENT_DATE())) / DAY(LAST_DAY(DATEADD(DAY, -1, CURRENT_DATE()))) AS CAT_TARGET_MTD,
+       pt.CAT_TARGET * pt.CAT_TARGET_PCT / 100                           AS CAT_REVENUE_MTD,
        IFF(s.STATE IN ('KARNATAKA', 'DELHI', 'HARYANA'), 60, 90)        AS MAX_DOI
 FROM store s
 JOIN cat c         ON c.bc = s.bc
