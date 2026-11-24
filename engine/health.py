@@ -7,6 +7,13 @@ Benchmarks
   price mix      the store's own 90-day sales share by MRP band
   size curve     the store's 90-day category size sales share
 "Actual" is always the share of current store stock (on hand + JIT).
+
+Net stock (STORE_CATEGORY_DELTA, size_category_meta_delta_offline):
+  after JIT = inventory + JIT - ROS7d x lead time - outward
+  after IST = after JIT + IST inbound (IST_JIT_QTY) - IST given away (IST_GIVEN_QTY)
+Ideal options = base stock x category mix / depth; per meta combination x the meta ideal mix as well.
+Category target = FACT_PARETO_TARGET_PERFORMANCE_SUMMARY (store wise, this month): store target x
+  (category inventory share x category ASP) / sum over the store's categories.
 """
 import calendar
 import json
@@ -100,6 +107,8 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
         str_den = float(sg["STR_DEN"].sum())
         mix_a = _share(g.groupby("MIX")["STOCK"].sum().to_dict())
         mix_i = ideal.get(key, {})
+        mix_s = _share(sg.groupby("MIX")["L90"].sum().to_dict())
+        mix_o = g.groupby("MIX")["SKU"].nunique().to_dict()
         col_a = _share(g.groupby("COLB")["STOCK"].sum().to_dict())
         col_b = clus_col.get((st_cluster.get(int(r.BC)), r.CATEGORY), {})
         band_a = _share(g.groupby("BAND")["STOCK"].sum().to_dict())
@@ -107,6 +116,15 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
         sz_inv = np.sum([_arr(v) for v in g["SZ"]], axis=0) if len(g) else np.zeros(10)
         sz_sale = size_sale.get(key, np.zeros(10))
         tgt = _f(r.TARGET_MTD) or _f(r.TARGET_MONTH) * month_frac
+        has_d = getattr(r, "D_INV", None) is not None and r.D_INV == r.D_INV
+        if has_d:
+            cbase = _f(r.D_CAT_BASE) or base
+            draw = _f(r.D_ROS7) * (_f(r.D_LEAD) or 3) + _f(r.D_OUTWARD)
+            net_jit = _f(r.D_INV) + _f(r.D_JIT) - draw
+            net_ist = net_jit + _f(r.D_IST_IN) - _f(r.D_IST_OUT)
+        else:                                    # store not in STORE_CATEGORY_DELTA: stock + JIT only
+            cbase, net_jit = base, stock
+            net_ist = stock
         health[key] = {
             "base": round(base), "depth": depth, "stock": round(stock), "jit": round(_f(r.CAT_JIT)),
             "opts": opts, "idealOpts": round(base / depth) if base else 0,
@@ -118,7 +136,18 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
             "aged": round(float(g.loc[g["AGE_DAYS"] > 120, "STOCK"].sum()) / stock, 3) if stock else 0,
             "noSale": int(((g["L30"] == 0) & (g["AGE_DAYS"] > 30)).sum()),
             "rev90": round(float(sg["REV90"].sum())),
-            "mix": {k: [round(mix_i.get(k, 0), 3), round(mix_a.get(k, 0), 3)] for k in set(mix_i) | set(mix_a)},
+            # mix: [ideal share, stock share, 90d sales share]; mixOpt: [ideal options, options carried]
+            "mix": {k: [round(mix_i.get(k, 0), 3), round(mix_a.get(k, 0), 3), round(mix_s.get(k, 0), 3)]
+                    for k in set(mix_i) | set(mix_a) | set(mix_s)},
+            "mixOpt": {k: [round(base * mix_i.get(k, 0) / depth, 1), int(mix_o.get(k, 0))] for k in set(mix_i) | set(mix_o)},
+            "catBase": round(cbase), "inv": round(_f(r.D_INV) if has_d else _f(r.CAT_INV)),
+            "istIn": round(_f(r.D_IST_IN)), "istOut": round(_f(r.D_IST_OUT)), "ros7": round(_f(r.D_ROS7)),
+            "lead": round(_f(r.D_LEAD) or 3), "outward": round(_f(r.D_OUTWARD)),
+            "netJit": round(net_jit), "netIst": round(net_ist),
+            "fillNow": round((_f(r.D_INV) if has_d else _f(r.CAT_INV)) / cbase, 3) if cbase else -1,
+            "fillJit": round(net_jit / cbase, 3) if cbase else -1, "fillIst": round(net_ist / cbase, 3) if cbase else -1,
+            "catTarget": round(_f(getattr(r, "CAT_TARGET", 0))), "catTargetPct": round(_f(getattr(r, "CAT_TARGET_PCT", 0)), 1),
+            "catTargetW": round(_f(getattr(r, "CAT_TARGET_WEIGHT", 0)), 1),
             "col": {k: [round(col_b.get(k, 0), 3), round(col_a.get(k, 0), 3)] for k in set(col_b) | set(col_a)},
             "band": {k: [round(band_s.get(k, 0), 3), round(band_a.get(k, 0), 3)] for k in set(band_s) | set(band_a)},
             "size": [[round(x / sz_sale.sum(), 3) if sz_sale.sum() else 0 for x in sz_sale],
