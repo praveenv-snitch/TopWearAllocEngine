@@ -12,8 +12,8 @@ Net stock (STORE_CATEGORY_DELTA, size_category_meta_delta_offline):
   after JIT = inventory + JIT - ROS7d x lead time - outward
   after IST = after JIT + IST inbound (IST_JIT_QTY) - IST given away (IST_GIVEN_QTY)
 Ideal options = base stock x category mix / depth; per meta combination x the meta ideal mix as well.
-Category target = FACT_PARETO_TARGET_PERFORMANCE_SUMMARY (store wise, this month): store target x
-  (category inventory share x category ASP) / sum over the store's categories.
+Category target (MTD) = FACT_PARETO_TARGET_PERFORMANCE_SUMMARY monthly category target (store target x category
+  inventory share x category ASP / sum over the store's categories) x days elapsed to yesterday / days in month.
 """
 import calendar
 import json
@@ -146,7 +146,10 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
             "netJit": round(net_jit), "netIst": round(net_ist),
             "fillNow": round((_f(r.D_INV) if has_d else _f(r.CAT_INV)) / cbase, 3) if cbase else -1,
             "fillJit": round(net_jit / cbase, 3) if cbase else -1, "fillIst": round(net_ist / cbase, 3) if cbase else -1,
-            "catTarget": round(_f(getattr(r, "CAT_TARGET", 0))), "catTargetPct": round(_f(getattr(r, "CAT_TARGET_PCT", 0)), 1),
+            # category target, MTD: FACT_PARETO monthly category target pro-rated to yesterday; revenue = category MTD sales
+            "catTarget": round(_f(getattr(r, "CAT_TARGET_MTD", 0))), "catTargetMonth": round(_f(getattr(r, "CAT_TARGET_MONTH", 0))),
+            "catRevenue": round(_f(getattr(r, "CAT_REVENUE_MTD", 0))),
+            "catTargetPct": round(100 * _f(getattr(r, "CAT_REVENUE_MTD", 0)) / _f(r.CAT_TARGET_MTD), 1) if _f(getattr(r, "CAT_TARGET_MTD", 0)) else 0,
             "catTargetW": round(_f(getattr(r, "CAT_TARGET_WEIGHT", 0)), 1),
             "col": {k: [round(col_b.get(k, 0), 3), round(col_a.get(k, 0), 3)] for k in set(col_b) | set(col_a)},
             "band": {k: [round(band_s.get(k, 0), 3), round(band_a.get(k, 0), 3)] for k in set(band_s) | set(band_a)},
