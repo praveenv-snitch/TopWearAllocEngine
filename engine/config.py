@@ -35,9 +35,17 @@ EXCL_MARKETPLACES = ("'SNITCH - WH - EMIZA','SNITCH - WH - SR','SNITCH - WH - YE
 EXCL_DOC_PREFIX = "'OMS','QCOM'"
 
 
+# Plus-size styles are planned separately and kept out of this engine everywhere (shirts 4BSFS / 4MBGS, T-shirts 4BRN / 4BPL)
+PLUS_EXCL_PREFIXES = ["4BSFS", "4MBGS", "4BRN", "4BPL"]
+
+
+def plus_excl(col):
+    return " AND ".join(f"UPPER({col}) NOT LIKE '{p}%'" for p in PLUS_EXCL_PREFIXES)
+
+
 def sku_excl(col):
-    """SKU_GROUP / item-code exclusions (CB*, NT*, N0*, hangers, uniform, non-trading)."""
-    return (f"UPPER({col}) NOT LIKE 'CB%' AND UPPER({col}) NOT LIKE 'NT%' AND UPPER({col}) NOT LIKE 'N0%' "
+    """SKU_GROUP / item-code exclusions (CB*, NT*, N0*, hangers, uniform, non-trading, plus-size styles)."""
+    return (plus_excl(col) + " AND " + f"UPPER({col}) NOT LIKE 'CB%' AND UPPER({col}) NOT LIKE 'NT%' AND UPPER({col}) NOT LIKE 'N0%' "
             f"AND UPPER({col}) NOT ILIKE '%HANGER%' AND UPPER({col}) <> 'UNIFORM' "
             f"AND UPPER({col}) NOT IN (SELECT DISTINCT UPPER(SKU_GROUP) FROM SNITCH_DB.MAPLEMONK.LOGIC_FINAL_ITEM_MASTER "
             f"WHERE CATEGORY ILIKE 'NON%TRADING%' AND SKU_GROUP IS NOT NULL)")
@@ -194,6 +202,7 @@ SQL_PARAMS = {
     "CATS": ",".join("'%s'" % c for c in CATEGORIES),
     "OM_SKU_EXCL": sku_excl("om.SKU_GROUP"),
     "SKU_EXCL": sku_excl("SKU_GROUP"),
+    "PLUS_EXCL": plus_excl("SKU_GROUP"), "PLUS_EXCL_SKU": plus_excl("SKU"),
     "MD_CAT_SYN": category_synonym_case("md.CATEGORY"),
     "OM_CAT_SYN": category_synonym_case("om.NEW_CATEGORY"),
     "NUDGE_DAYS": NUDGE_DAYS,
