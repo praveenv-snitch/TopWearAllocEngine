@@ -91,7 +91,7 @@ pp_codes AS (   -- live pack codes on hand: PP6-<style>-<colour>-<lot>... one ro
            TRY_TO_NUMBER(REGEXP_SUBSTR(UPPER(SKU), '^PP([0-9]+)', 1, 1, 'e')) depth,
            COUNT(DISTINCT UPPER(SKU)) codes
     FROM SNITCH_DB.MAPLEMONK.LIVE_INV_WAREHOUSE_OFFLINE_REPLEN
-    WHERE UPPER(SKU) LIKE 'PP%'
+    WHERE UPPER(SKU) LIKE 'PP%' AND COALESCE(UNITS_ON_HAND, 0) > 0      -- only packs physically on hand
     GROUP BY 1, 2, 3
 ),
 pp AS (         -- sendable packs = min(helper sets, live codes) per zone
