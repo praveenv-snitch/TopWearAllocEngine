@@ -117,6 +117,20 @@ ev(`Object.assign(RF,{wh:'all',ftype:'fresh',mrpMin:'1000',mrpMax:'1499',sets:{f
 const fa = JSON.parse(ev(`JSON.stringify({lines:LAST.length,count:txt=document.getElementById('rfCount').textContent,badMrp:LAST.filter(r=>K[r.k][13]<1000||K[r.k][13]>1499).length,
  badFit:LAST.filter(r=>!RF.sets.fit.has(W[K[r.k][5]])).length,repeat:LAST.filter(r=>REPEAT.has(r.si*K.length+r.k)).length,msx:document.querySelectorAll('#t-alloc .msx').length})`));
 console.log('  fresh + MRP 1000-1499 + fit:', JSON.stringify(fa)); ok(!fa.badMrp && !fa.badFit && !fa.repeat && fa.msx === 9, 'attribute / MRP filters');
+// colour family: all available colours by default, capped by "Colours per style"
+const FAMCHK = `(()=>{const m=new Map();for(const r of LAST){if(r.type!=='FRESH')continue;const key=r.si+'|'+famOf(r.k);m.set(key,(m.get(key)||0)+1)}
+ let missed=0,checked=0;for(const r of LAST){if(r.type!=='FRESH'||r.family)continue;const ks=new Set(poolSkus());
+  const sib=(FAM.get(famOf(r.k))||[]).filter(k2=>k2!==r.k&&ks.has(k2)&&!STOCK[r.si*K.length+k2]);checked+=sib.length;
+  for(const k2 of sib)if(!LAST.some(x=>x.si===r.si&&x.k===k2))missed++}
+ const dup=LAST.length-new Set(LAST.map(r=>r.si*K.length+r.k)).size;return JSON.stringify({dup,families:m.size,maxPerStore:Math.max(0,...m.values()),familyLines:LAST.filter(r=>r.family).length,siblingsChecked:checked,siblingsNotSent:missed})})()`;
+ev(`Object.assign(RF,{wh:'all',ftype:'all',mrpMin:'',mrpMax:'',sets:{},maxCol:'all'});renderRF()`); $('aRun').click();
+const fam1 = JSON.parse(ev(FAMCHK)); console.log('  colour family, all colours:', JSON.stringify(fam1), '| rules', JSON.stringify(JSON.parse(ev(`JSON.stringify((${RULES})(LAST,true))`)).nViol));
+ok(fam1.familyLines > 0, 'no colour-family lines'); ok(JSON.parse(ev(`JSON.stringify((${RULES})(LAST,true))`)).nViol === 0, 'family rule broke pack rules');
+ev(`RF.maxCol='2';renderRF()`); $('aRun').click();
+const fam2 = JSON.parse(ev(FAMCHK)); console.log('  colour family, max 2:', JSON.stringify(fam2)); ok(fam2.maxPerStore <= 2, 'colours-per-style cap exceeded'); ok(!fam1.dup && !fam2.dup, 'duplicate store x SKU lines');
+const gapOrder = ev(`(()=>{let bad=0;const by=new Map();for(const r of LAST)if(r.family){const key=r.si+'|'+famOf(r.k);if(!by.has(key))by.set(key,[]);by.get(key).push(r)}
+ for(const rs of by.values())for(let i=1;i<rs.length;i++)if(rs[i].gapBefore.col>rs[i-1].gapBefore.col+1e-6&&rs[i].f.colKey!==rs[i-1].f.colKey)bad++;return bad})()`);
+console.log('  family colours picked by colour gap, order breaks:', gapOrder);
 $('rfClear').click(); ok(ev('RF.wh')==='all' && !Object.keys(ev('RF.sets')).length, 'clear SKU filters');
 ok(!!d.querySelector('#wExplain table') && !d.querySelector('details.wexp').open, 'weights explainer missing or open');
 
