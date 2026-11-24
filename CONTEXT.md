@@ -51,3 +51,19 @@ A daily-refreshed dashboard for Shirts + T-shirts offline allocation. Similar SK
 1. Update "Where we are" above.
 2. Update directives with new learnings.
 3. Commit with a clear message.
+
+## v3 (fresh-pool engine)
+- **New datasets:** `engine/sql/fresh_pool.sql` (AV_MASTER_HTMBASE, store_avail.py logic: FULL_SIZE_OPTIONS, sizes after buffer, prepack sets per zone) and `engine/sql/pp_codes.sql` (prepack serial codes with UNITS_ON_HAND > 0, LIVE_INV_WAREHOUSE_OFFLINE_REPLEN).
+- **stores.sql** joins STORE_CATEGORY_DELTA (size_category_meta_delta_offline). Store fill now = SUM(inventory) ÷ base. After JIT = (inv + JIT − ROS7d × lead time − outward) ÷ base. After IST = (inv + JIT + IST in − ROS7d × lead time − outward − IST given) ÷ base. It also joins FACT_PARETO_TARGET_PERFORMANCE_SUMMARY (store wise, current month) for the category target and % achieved.
+- **Fresh run (Allocation tab):**
+  - Uses the whole fresh pool, for filtered stores, one store, or clusters.
+  - Auto budget = 110% × base − net stock after JIT + IST (store level). It is split between Shirts and T-shirts by category gap, and each category is capped at 110% of its category base.
+  - Manual mode: you set the units per store and choose Both or one category.
+- **Pack rules:**
+  - Fresh = exactly 2 coded prepacks, else one loose set (it uses a FULL_SIZE_OPTION).
+  - Replen = per-size need, max 6 a size; prepacks follow the store_replen_prepack rule. The `replen_need` weight favours size-broken and under-30-day-cover styles.
+  - Every prepack line lists its serial codes, and each code is used once.
+- **UI:**
+  - Store detail shows only for exactly one store, with a category toggle and a meta benchmark toggle (Ideal / Sales share). Deviation and ideal options per meta combination sit in a collapsed section.
+  - Mini-tables have headers. Price and age filters recompute the health table, and there is a Reset button.
+  - Nudges get status chips with a legend, a category toggle, and cascading alert filters; clicking an alert opens store health.
