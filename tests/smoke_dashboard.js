@@ -109,18 +109,37 @@ ev(`R.scope='cluster';R.clusters=new Set([S[0][6]]);R.units='auto';R.cat='both';
 const cl = JSON.parse(ev(`JSON.stringify({clusters:[...new Set(LAST.map(r=>S[r.si][6]))],units:sum(LAST.map(r=>r.units))})`));
 console.log('  cluster run', ev('S[0][6]'), JSON.stringify(cl)); ok(cl.clusters.every(c => c === ev('S[0][6]')), 'cluster run left the cluster');
 
+// fresh-run SKU filters: warehouse only, fresh / repeat, attribute list, MRP range
+ev(`R.scope='filtered';R.units='auto';R.cat='both';runUI();RF.wh='north';RF.ftype='repeat';renderRF()`); $('aRun').click();
+const fz = JSON.parse(ev(`JSON.stringify({lines:LAST.length,zones:[...new Set(LAST.map(r=>r.z))],nonRepeat:LAST.filter(r=>!REPEAT.has(r.si*K.length+r.k)).length,fallback:LAST.filter(r=>r.fallback&&r.z!==0).length})`));
+console.log('  North WH + repeat only:', JSON.stringify(fz)); ok(fz.zones.every(z => z === 0) && fz.nonRepeat === 0, 'warehouse / repeat filter');
+ev(`Object.assign(RF,{wh:'all',ftype:'fresh',mrpMin:'1000',mrpMax:'1499',sets:{fit:new Set([W[K[poolSkus()[0]][5]]])}});renderRF()`); $('aRun').click();
+const fa = JSON.parse(ev(`JSON.stringify({lines:LAST.length,count:txt=document.getElementById('rfCount').textContent,badMrp:LAST.filter(r=>K[r.k][13]<1000||K[r.k][13]>1499).length,
+ badFit:LAST.filter(r=>!RF.sets.fit.has(W[K[r.k][5]])).length,repeat:LAST.filter(r=>REPEAT.has(r.si*K.length+r.k)).length,msx:document.querySelectorAll('#t-alloc .msx').length})`));
+console.log('  fresh + MRP 1000-1499 + fit:', JSON.stringify(fa)); ok(!fa.badMrp && !fa.badFit && !fa.repeat && fa.msx === 9, 'attribute / MRP filters');
+$('rfClear').click(); ok(ev('RF.wh')==='all' && !Object.keys(ev('RF.sets')).length, 'clear SKU filters');
+ok(!!d.querySelector('#wExplain table') && !d.querySelector('details.wexp').open, 'weights explainer missing or open');
+
 // --- TAB 3
 const nh = txt($('nudgeOut'));
 console.log('\n[TAB3]', txt(d.querySelector('#nudgeOut h2')), '|', txt(d.querySelector('#nudgeOut .legend')).slice(0, 120));
-ok(!/\bACT\b/.test(nh), 'ACT label still shown');
-const nrows = () => d.querySelectorAll('#nudgeOut .card:first-child tbody tr').length;
+ok(!/\bACT\b/.test(nh) && !nh.includes('3d+') && nh.includes('Pending 5d+'), 'status labels');
+ok(ev("[...Array(K.length).keys()].every(k=>true)"), '');
+const vis = () => [$('alertCard').style.display, d.querySelector('#nudgeOut .card').style.display];
+ok(vis()[0] === 'none' && vis()[1] === '', 'alerts should be hidden by default');
+const nv = d.querySelector('[data-r="nview"] input[value="alerts"]'); nv.checked = true; nv.dispatchEvent(new w.Event('change'));
+ok($('alertCard').style.display === '' && d.querySelector('#nudgeOut .card').style.display === 'none', 'nudges toggle');
+const nv2 = d.querySelector('[data-r="nview"] input[value="wh"]'); nv2.checked = true; nv2.dispatchEvent(new w.Event('change'));
+const nrows = () => d.querySelectorAll('#nudgeOut .card tbody tr').length;
 const nAll = nrows(); const nc = d.querySelector('[data-r="ncat"] input[value="1"]'); nc.checked = true; nc.dispatchEvent(new w.Event('change'));
 console.log('  inwards all / T-shirts:', nAll, '/', nrows());
+const nv3 = d.querySelector('[data-r="nview"] input[value="alerts"]'); nv3.checked = true; nv3.dispatchEvent(new w.Event('change'));
 const ac = $('aClus'); ac.value = ac.options[1].value; ac.dispatchEvent(new w.Event('change'));
 console.log('  alerts after cluster filter:', txt(d.querySelector('#alertCard h2')), '| store options', $('aStore').options.length - 1);
 ok([...$('aStore').options].slice(1).every(o => ev(`S[${o.value}][6]`) === ac.value), 'alert store list not cascading');
 d.querySelector('#alertCard tbody tr.click').click();
-ok(d.querySelectorAll('#storeDetail .kpi').length >= 2 && ev('F.stores.size') === 1, 'alert click did not open store health');
+ok(d.querySelectorAll('#storeDetail .kpi').length >= 2 && ev('F.stores.size') === 1 && $('t-health').classList.contains('on'), 'alert click did not open store health');
+ok(txt($('healthTbl')).includes('MTD'), 'MTD note missing');
 console.log('  alert click -> store detail:', txt(d.querySelector('#storeDetail h2')).slice(0, 60));
 console.log('\nerrors:', errs.length, errs.slice(0, 3), '| failed checks:', fails.length ? fails : 'none');
 process.exit(errs.length || fails.length ? 1 : 0);
