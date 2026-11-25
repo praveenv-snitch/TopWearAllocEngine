@@ -60,11 +60,12 @@ scd AS (   -- STORE_CATEGORY_DELTA (size_category_meta_delta_offline): stock, JI
     SELECT TRY_TO_NUMBER(BRANCH_CODE) bc, UPPER(CATEGORY) CATEGORY,
            SUM(COALESCE(INVENTORY, 0)) D_INV, SUM(COALESCE(JIT_QTY, 0)) D_JIT, SUM(COALESCE(IST_JIT_QTY, 0)) D_IST_IN,
            SUM(COALESCE(IST_GIVEN_QTY, 0)) D_IST_OUT, SUM(COALESCE(ROS_7D, 0)) D_ROS7, MAX(COALESCE(LEAD_TIME, 3)) D_LEAD,
-           SUM(COALESCE(OUTWARD_QTY, 0)) D_OUTWARD, MAX(CATEGORY_BASE_STOCK) D_CAT_BASE, MAX(TRY_TO_NUMBER(BASE_STOCK)) D_BASE
+           SUM(COALESCE(OUTWARD_QTY, 0)) D_OUTWARD, MAX(CATEGORY_BASE_STOCK) D_CAT_BASE, MAX(TRY_TO_NUMBER(BASE_STOCK)) D_BASE,
+           MAX(CLUSTER_POC) D_POC     -- POC mapping of size_category_meta_delta_offline (some stores map to another cluster's POC)
     FROM SNITCH_DB.MAPLEMONK.STORE_CATEGORY_DELTA GROUP BY 1, 2
 ),
 scd_store AS (   -- store level (all categories): current fill / after JIT / after IST, as in the delta file formulas
-    SELECT bc, MAX(D_BASE) S_BASE, SUM(D_INV) S_INV,
+    SELECT bc, MAX(D_BASE) S_BASE, SUM(D_INV) S_INV, MAX(D_POC) POC,
            SUM(D_INV) + SUM(D_JIT) - SUM(D_ROS7) * MAX(D_LEAD) - SUM(D_OUTWARD)                                      S_NET_JIT,
            SUM(D_INV) + SUM(D_JIT) + SUM(D_IST_IN) - SUM(D_ROS7) * MAX(D_LEAD) - SUM(D_OUTWARD) - SUM(D_IST_OUT)     S_NET_IST
     FROM scd GROUP BY 1
@@ -96,7 +97,7 @@ SELECT s.bc AS BC, s.STORE_NAME, s.STORE_TYPE, s.STATE, s.CITY,
        c.CATEGORY, m.IDEAL_CAT_MIX, c.DEPTH, c.CAT_INV, c.CAT_JIT, c.OPTIONS, c.CAT_L30,
        t.TARGET_MTD, t.TARGET_MONTH, a.ACTUAL_MTD,
        d.D_INV, d.D_JIT, d.D_IST_IN, d.D_IST_OUT, d.D_ROS7, d.D_LEAD, d.D_OUTWARD, d.D_CAT_BASE,
-       ds.S_BASE, ds.S_INV, ds.S_NET_JIT, ds.S_NET_IST,
+       ds.S_BASE, ds.S_INV, ds.S_NET_JIT, ds.S_NET_IST, ds.POC,
        pt.STORE_MONTH_TARGET, pt.CAT_TARGET_WEIGHT, pt.CAT_TARGET AS CAT_TARGET_MONTH,
        pt.CAT_TARGET * DAY(DATEADD(DAY, -1, CURRENT_DATE())) / DAY(LAST_DAY(DATEADD(DAY, -1, CURRENT_DATE()))) AS CAT_TARGET_MTD,
        pt.CAT_TARGET * pt.CAT_TARGET_PCT / 100                           AS CAT_REVENUE_MTD,
