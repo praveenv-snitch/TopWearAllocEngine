@@ -263,7 +263,8 @@ def main():
                           _i(r.CARPET_AREA), _i(r.BASE_STOCK), _i(r.MAX_DOI), _i(r.APPAREL_INV),
                           # 12 store base (delta), 13 store inventory, 14 net after JIT, 15 net after IST (all categories)
                           _i(r.S_BASE) or _i(r.BASE_STOCK), _i(r.S_INV), _i(r.S_NET_JIT), _i(r.S_NET_IST),
-                          1 if r.S_NET_IST == r.S_NET_IST and r.S_NET_IST is not None else 0])
+                          1 if r.S_NET_IST == r.S_NET_IST and r.S_NET_IST is not None else 0,
+                          _s(getattr(r, "POC", "")) or "Unknown"])        # 17 cluster POC (STORE_CATEGORY_DELTA)
         health_out.append([hl.get((int(r.BC), c)) for c in cats])
 
     payload = {
