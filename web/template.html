@@ -40,7 +40,7 @@ td.n,th.n{text-align:right}.scroll{overflow:auto;max-height:560px}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .wt{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 12px}.wt label{display:flex;justify-content:space-between;align-items:center;gap:6px}.wt input{width:60px}
 .wv{display:inline-flex;align-items:center;gap:4px}.wv .ws{width:62px;font-size:11px;text-align:right}.wtot{grid-column:1/-1;display:flex;gap:10px;align-items:center;font-size:12px;padding-top:4px;border-top:1px dashed var(--line)}
-.hint{color:var(--mut);font-size:12px}tr.click{cursor:pointer}tr.click:hover{background:#f5f8ff}
+.hint{color:var(--mut);font-size:12px}tr.click{cursor:pointer}tr.click:hover{background:#f5f8ff}tr.sel{background:#eef2ff;box-shadow:inset 3px 0 0 var(--acc)}
 .sz{font-family:ui-monospace,Menlo,monospace;font-size:11px}
 .topcard{position:relative}.badges{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;pointer-events:none}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;pointer-events:auto}
@@ -70,6 +70,7 @@ details.ex{border:1px solid var(--line);border-radius:10px;background:#fff;paddi
 .basket .item button{border:0;background:#c7d2fe;border-radius:50%;width:18px;height:18px;cursor:pointer;line-height:18px;padding:0}
 th[title]{text-decoration:underline dotted;text-underline-offset:3px}
 .runbox{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:10px 0}.runbox>div{background:#f8f9fb;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.runbox h3{margin:0 0 6px}
+.alertbox{background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px}.alertbox.ok{background:#f0fdf4;border-color:#bbf7d0;color:#14532d}
 .legend{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0;font-size:12px}
 .st-pend{background:#fee2e2;color:#991b1b}.st-new{background:#fef3c7;color:#92400e}.st-done{background:#dcfce7;color:#166534}.st-none{background:#f1f5f9;color:#475569}
 .mini2 th{position:static;cursor:default}
@@ -127,7 +128,7 @@ th[title]{text-decoration:underline dotted;text-underline-offset:3px}
    <div style="text-align:right;margin:-2px 0 4px"><a href="#" id="wReset">reset to defaults</a></div>
    <details class="wexp"><summary>What are weights? (simple explanation with an example)</summary><div id="wExplain"></div></details>
    <div class="wt" id="wts"></div></details>
-  <div class="filters" style="margin-top:10px"><button class="b p" id="aRun">Run fresh allocation</button><button class="b" id="aCsv" disabled>Download CSV</button><span class="hint" id="aPreview"></span></div>
+  <div class="filters" style="margin-top:10px"><button class="b p" id="aRun">Run fresh allocation</button><button class="b" id="aCsv" disabled>Download CSV</button><span class="hint" id="aPreview"></span></div><div id="aAlert"></div>
   <div id="allocSum" style="margin-top:10px"></div><div class="scroll" id="allocTbl"></div></div>
 </section>
 <!-- ================= TAB 3 ================= -->
@@ -389,7 +390,8 @@ const HOW_FRESH=`<div class="how"><b>How the fresh-pool run works (whole fresh p
  <li><b>Fresh pool.</b> Every Shirt / T-shirt in AV_MASTER_HTMBASE with full size options or prepack sets (store_avail.py logic), per zone: loose sizes after buffer, FULL_SIZE_OPTIONS and coded prepacks. A SKU is fresh for a store when the store has no stock and no JIT of it.</li>
  <li><b>Which stores.</b> The stores in scope (filtered stores, one store, or chosen clusters). In <b>Auto</b> a store qualifies only while its <b>fill after JIT + IST</b> is below ${Math.round(D.fresh.fill_budget*100)}% of base stock.</li>
  <li><b>How many units.</b> Auto: budget = ${Math.round(D.fresh.fill_budget*100)}% × base stock − net stock after JIT + IST (e.g. base 1,000 → 1,100 − 1,000 = 100 units). Net stock = inventory + JIT + IST in − ROS 7d × lead time − outward − IST given (STORE_CATEGORY_DELTA).
-  The budget is split between Shirts and T-shirts by category gap (category base − category net stock), each category capped at ${Math.round(D.fresh.fill_budget*100)}% of its own category base. Manual: you set the units per store and Both (split by gap) or one category.</li>
+  The budget is split between Shirts and T-shirts by category gap (category base − category net stock), each category capped at ${Math.round(D.fresh.fill_budget*100)}% of its own category base. Manual: give one of units per store (max, optional min), options per store (styles × the store's category depth) or your own fill-rate target %. The category with the bigger delta always gets the bigger share.
+  If a store has room overall but no Shirts / T-shirts delta, it is not allocated: you get an alert and can keep it out or force allocate it.</li>
  <li><b>Colour family.</b> When a style goes fresh to a store, its other available colours (same style code, e.g. 4MSS4407-01 / -02) go to that store too — all of them, or up to "Colours per style" (SKU filters), picking the colours the store is shortest of. A style only starts at a store if the budget fits all those colours, so styles go complete; WH stock is still checked per colour.</li>
  <li><b>Pack rules.</b> Fresh only: exactly 2 coded prepacks, else one loose size set (S–XL complete) that uses one full size option of the zone.</li>
  <li><b>Best allocation.</b> Each store × SKU line is valued (expected sell-through + metafield, colour, price, option gaps + store freshness and target need) and the best line is taken first; WH stock, codes and the store's budget and gaps shrink, then the rest are re-valued. It stops when the budget, the pool or the demand runs out.</li></ol></div>`;
@@ -538,15 +540,16 @@ function renderPlacement(){
 }
 
 // ---------------------------------------------------------------- TAB 2 filters
-const F={zone:'',cluster:'',type:'',cat:'',band:'',age:'',stores:new Set()};
-let DCAT=0,MBENCH='ideal';
+const F={zone:'',poc:'',cluster:'',type:'',cat:'',band:'',age:'',stores:new Set()};
+let DCAT=0,MBENCH='ideal',DSI=null;     // DSI: store whose detail is open (null = auto when exactly one store is filtered, -1 = closed)
 const uniq=i=>[...new Set(S.map(s=>s[i]))].filter(Boolean).sort();
 function msHtml(){const opts=S.map((s,i)=>[i,s[1]]).sort((p,q)=>p[1].localeCompare(q[1]));
  return `<div class="ms" id="msStores"><button class="b" id="msBtn">Stores: all</button><div class="dd"><input id="msQ" placeholder="search store" style="width:100%;margin-bottom:4px">
  <div><a href="#" id="msAll">select shown</a> · <a href="#" id="msNone">clear</a></div><div id="msList">${opts.map(([i,n])=>`<label data-n="${esc(n.toLowerCase())}" data-si="${i}"><input type="checkbox" value="${i}"> ${esc(n)} <span class="mut">${esc(S[i][6])}</span></label>`).join('')}</div></div></div>`}
 document.getElementById('f2').innerHTML=`
  <select id="fZone" title="Zone (STORE_ZONE_MAP)"><option value="">All zones</option>${uniq(5).map(x=>`<option>${x}</option>`).join('')}</select>
- <select id="fClus" title="Cluster; the list follows the zone"></select>
+ <select id="fPoc" title="Cluster POC (STORE_CATEGORY_DELTA mapping). A POC can own several clusters, and some stores map to a POC of another cluster; the list follows the zone"></select>
+ <select id="fClus" title="Cluster; the list follows the zone and POC"></select>
  <select id="fType" title="Store type (COCO / COFO / FOFO ...)"><option value="">All store types</option>${uniq(2).map(x=>`<option>${x}</option>`).join('')}</select>
  ${msHtml()}
  <select id="fCat" title="Category shown in the health table"><option value="">Both categories</option>${CATS.map((c,i)=>`<option value="${i}">${c}</option>`).join('')}</select>
@@ -554,22 +557,26 @@ document.getElementById('f2').innerHTML=`
  <select id="fAge" title="SKU age: health metrics are recomputed on store stock of these SKUs; the fresh run only uses them"><option value="">All SKU ages</option><option value="new">New + recent SKUs</option><option value="fresh">WH inward ≤ ${D.freshDays}d</option><option value="old">Old SKUs</option></select>
  <button class="b" id="fReset">Reset filters</button><span class="hint" id="fCount"></span>`;
 const ms=document.getElementById('msStores');
-function clusterOpts(){const el=document.getElementById('fClus'),cl=[...new Set(S.filter(s=>!F.zone||s[5]===F.zone).map(s=>s[6]))].sort();
+function clusterOpts(){      // cascading: zone -> POC -> cluster -> type -> stores
+ const pe=document.getElementById('fPoc'),pocs=[...new Set(S.filter(s=>!F.zone||s[5]===F.zone).map(s=>s[17]))].sort();
+ if(F.poc&&!pocs.includes(F.poc))F.poc='';
+ pe.innerHTML=`<option value="">All POCs</option>${pocs.map(x=>`<option ${x===F.poc?'selected':''}>${esc(x)}</option>`).join('')}`;
+ const el=document.getElementById('fClus'),cl=[...new Set(S.filter(s=>(!F.zone||s[5]===F.zone)&&(!F.poc||s[17]===F.poc)).map(s=>s[6]))].sort();
  if(F.cluster&&!cl.includes(F.cluster))F.cluster='';
  el.innerHTML=`<option value="">All clusters</option>${cl.map(x=>`<option ${x===F.cluster?'selected':''}>${esc(x)}</option>`).join('')}`}
-function storeOk(si){const s=S[si];return (!F.zone||s[5]===F.zone)&&(!F.cluster||s[6]===F.cluster)&&(!F.type||s[2]===F.type)}
+function storeOk(si){const s=S[si];return (!F.zone||s[5]===F.zone)&&(!F.poc||s[17]===F.poc)&&(!F.cluster||s[6]===F.cluster)&&(!F.type||s[2]===F.type)}
 function msSync(){ms.querySelectorAll('#msList label').forEach(l=>{const si=+l.dataset.si;l.querySelector('input').checked=F.stores.has(si);l.classList.toggle('hide',!storeOk(si))});
  const q=document.getElementById('msQ').value.toLowerCase();ms.querySelectorAll('#msList label').forEach(l=>l.style.display=(!l.classList.contains('hide')&&l.dataset.n.includes(q))?'':'none');
  document.getElementById('msBtn').textContent=F.stores.size?(F.stores.size===1?S[[...F.stores][0]][1]:F.stores.size+' stores'):'Stores: all'}
 document.getElementById('msBtn').onclick=e=>{e.stopPropagation();ms.classList.toggle('open')};
 document.addEventListener('click',e=>{if(!ms.contains(e.target))ms.classList.remove('open')});
 document.getElementById('msQ').oninput=msSync;
-document.getElementById('msList').onchange=()=>{F.stores=new Set([...ms.querySelectorAll('#msList input:checked')].map(i=>+i.value));refresh2()};
+document.getElementById('msList').onchange=()=>{F.stores=new Set([...ms.querySelectorAll('#msList input:checked')].map(i=>+i.value));if(DSI===-1)DSI=null;refresh2()};
 document.getElementById('msAll').onclick=e=>{e.preventDefault();ms.querySelectorAll('#msList label').forEach(l=>{if(l.style.display!=='none')l.querySelector('input').checked=true});document.getElementById('msList').onchange()};
 document.getElementById('msNone').onclick=e=>{e.preventDefault();F.stores=new Set();refresh2()};
-[['fZone','zone'],['fClus','cluster'],['fType','type'],['fCat','cat'],['fBand','band'],['fAge','age']].forEach(([id,k])=>document.getElementById(id).onchange=e=>{F[k]=e.target.value;
- if(k==='cat'&&F.cat!=='')DCAT=+F.cat;if(k==='zone'||k==='cluster'||k==='type')F.stores=new Set([...F.stores].filter(storeOk));refresh2()});
-document.getElementById('fReset').onclick=()=>{Object.assign(F,{zone:'',cluster:'',type:'',cat:'',band:'',age:'',stores:new Set()});
+[['fZone','zone'],['fPoc','poc'],['fClus','cluster'],['fType','type'],['fCat','cat'],['fBand','band'],['fAge','age']].forEach(([id,k])=>document.getElementById(id).onchange=e=>{F[k]=e.target.value;
+ if(k==='cat'&&F.cat!=='')DCAT=+F.cat;if(k==='zone'||k==='poc'||k==='cluster'||k==='type')F.stores=new Set([...F.stores].filter(storeOk));if(DSI===-1)DSI=null;refresh2()});
+document.getElementById('fReset').onclick=()=>{Object.assign(F,{zone:'',poc:'',cluster:'',type:'',cat:'',band:'',age:'',stores:new Set()});DSI=null;
  ['fZone','fType','fCat','fBand','fAge'].forEach(id=>document.getElementById(id).value='');document.getElementById('msQ').value='';refresh2()};
 function storesFiltered(){const out=[];for(let si=0;si<NS;si++){if(!storeOk(si))continue;if(F.stores.size&&!F.stores.has(si))continue;out.push(si)}return out}
 const catSel=()=>F.cat===''?CATS.map((c,i)=>i):[+F.cat];
@@ -592,24 +599,38 @@ function combinedHealth(si){     // selected category, or both summed
 // store level (all categories, STORE_CATEGORY_DELTA): s[12] base, s[13] inventory, s[14] net after JIT, s[15] net after IST, s[16] has row
 const storeFill=si=>{const s=S[si];return s[16]&&s[12]?{now:s[13]/s[12],jit:s[14]/s[12],ist:s[15]/s[12]}:null};
 
-// Fresh budget: store-level units = fill_budget x base - net stock after JIT + IST, split Shirts / T-shirts by category gap
-// (category base - category net after IST); each category capped at fill_budget x its category base (auto only).
-function freshBudget(si,catMode,manual){
- const s=S[si],B=s[12],FB=D.fresh.fill_budget,cs=catMode==='both'?[0,1]:[+catMode],cats=[0,0];
- let total;
- if(manual!=null)total=Math.max(0,Math.floor(manual));
- else{if(!s[16]||!B)return {total:0,cats,why:'not in STORE_CATEGORY_DELTA'};total=Math.max(0,Math.floor(FB*B-s[15]));
-  if(!total)return {total:0,cats,why:'fill after JIT + IST ≥ '+Math.round(FB*100)+'%'}}
- const hc=c=>D.health[si][c],gap=c=>hc(c)?Math.max(0,hc(c).catBase-hc(c).netIst):0,cap=c=>hc(c)?Math.max(0,Math.floor(FB*hc(c).catBase-hc(c).netIst)):0;
- const lim=c=>manual!=null?Infinity:cap(c);
- if(cs.length===1)cats[cs[0]]=Math.min(total,lim(cs[0]));
- else{const g=cs.map(gap),G=sum(g),bw=cs.map(c=>hc(c)?hc(c).catBase:0);
-  cs.forEach((c,i)=>{const sh=G>0?g[i]/G:(sum(bw)?bw[i]/sum(bw):1/cs.length);cats[c]=Math.min(Math.floor(total*sh),lim(c))});
+// Fresh budget per store, split Shirts / T-shirts by category delta (category base - category net after JIT + IST):
+// the category with the bigger delta gets the bigger share.
+//  auto        fill_budget (110%) x base stock - net stock after JIT + IST; each category capped at 110% of its base
+//  fill        same with your own fill-rate target %
+//  units       up to max units per store (min = flag stores that end below it)
+//  options     up to max styles per store; units = styles x the category depth (DEPT_IDEAL)
+// A store with room overall but no Shirts / T-shirts delta is NOT allocated (noCatDelta) unless force = true,
+// in which case its budget is split by category base.
+function freshBudget(si,catMode,spec){
+ spec=spec||{kind:'auto'};
+ const s=S[si],B=s[12],cs=catMode==='both'?[0,1]:[+catMode],cats=[0,0],kind=spec.kind||'auto';
+ const FB=kind==='fill'?(+spec.fill||110)/100:D.fresh.fill_budget,pct=Math.round(FB*100);
+ const hc=c=>D.health[si][c],gap=c=>hc(c)?Math.max(0,hc(c).catBase-hc(c).netIst):0;
+ const depth=c=>hc(c)&&hc(c).depth?hc(c).depth:12,catName=cs.map(c=>CATS[c]==='SHIRTS'?'Shirts':'T-shirts').join(' / ');
+ let total,lim=()=>Infinity,min=0;
+ if(kind==='units'){total=Math.max(0,Math.floor(+spec.max||0));min=Math.max(0,+spec.min||0)}
+ else if(kind==='options'){total=Math.max(0,Math.floor(+spec.max||0));min=Math.max(0,+spec.min||0)}     // in styles here, units below
+ else{if(!s[16]||!B)return {total:0,cats,min,why:'not in STORE_CATEGORY_DELTA'};total=Math.max(0,Math.floor(FB*B-s[15]));
+  if(!total)return {total:0,cats,min,why:'fill after JIT + IST ≥ '+pct+'%'};
+  lim=c=>hc(c)?Math.max(0,Math.floor(FB*hc(c).catBase-hc(c).netIst)):0}
+ if(!total)return {total:0,cats,min,why:'0 set'};
+ const g=cs.map(gap),G=sum(g);
+ if(G<=0&&!spec.force)return {total,cats,min,why:'room in the store but no '+catName+' delta',noCatDelta:true};
+ const bw=cs.map(c=>hc(c)?hc(c).catBase:0),share=i=>G>0?g[i]/G:(sum(bw)?bw[i]/sum(bw):1/cs.length);
+ if(G<=0)lim=()=>Infinity;                       // forced: the category caps would be 0, so they are lifted
+ if(kind==='options'){cs.forEach((c,i)=>{cats[c]=Math.round(total*share(i))*depth(c)});min=Math.round(min*sum(cs.map((c,i)=>share(i)*depth(c))));total=sum(cats)}
+ else{cs.forEach((c,i)=>{cats[c]=Math.min(Math.floor(total*share(i)),lim(c))});
   let left=total-sum(cats);for(const c of cs){const add=Math.min(left,lim(c)-cats[c]);if(add>0){cats[c]+=add;left-=add}}}   // spill-over to the other category
- return {total,cats,why:sum(cats)?'':'both categories ≥ '+Math.round(FB*100)+'% of their category base'}}
+ return {total,cats,min,forced:G<=0,why:sum(cats)?(G<=0?'forced: split by category base':''):'both categories ≥ '+pct+'% of their category base'}}
 
 const HT={store:'Store name',fillS:'STORE fill after JIT + IST, all categories = (inventory + JIT + IST in − ROS 7d × lead time − outward − IST given) ÷ store base stock (STORE_CATEGORY_DELTA)',
- bud:'Fresh units the store can take in an auto run = '+Math.round(D.fresh.fill_budget*100)+'% × base stock − net stock after JIT + IST (0 when the store is already at or above it)',
+ bud:'Fresh units the store can take in an auto run = '+Math.round(D.fresh.fill_budget*100)+'% × base stock − net stock after JIT + IST, split by Shirts / T-shirts delta. 0 ⚠ = room in the store but no Shirts / T-shirts delta (held back unless forced)',
  cbase:'Category base = base stock × ideal category mix (GS_SHEET3)',stock:'Category stock on hand + JIT (units)',
  fNow:'Fill now = category inventory ÷ category base',fJit:'Fill after JIT = (inventory + JIT − ROS 7d × lead time − outward) ÷ category base',
  fIst:'Fill after IST = (inventory + JIT + IST in − ROS 7d × lead time − outward − IST given) ÷ category base',
@@ -624,15 +645,15 @@ function refresh2(){
  const sts=storesFiltered();document.getElementById('fCount').textContent=sts.length+' stores';
  document.getElementById('fNote').innerHTML=subsetOn()?`<span class="warn">Price / age filter on:</span> stock, options, L30, STR, DOI, cut, fresh and aged are recomputed on the store stock of SKUs ${F.band?'in '+esc(F.band):''}${F.band&&F.age?' and ':''}${F.age?'of age "'+esc(document.getElementById('fAge').selectedOptions[0].text)+'"':''}. Fill and targets stay at category level.`:'';
  const el=document.getElementById('healthTbl'),catBoth=F.cat==='';
- el.innerHTML=`<table><thead><tr>${th('Store',HT.store)}${th('Cluster')}${th('Zone')}${th('Type')}${th('Store fill after IST',HT.fillS,'n')}${th('Fresh budget',HT.bud,'n')}
+ el.innerHTML=`<table><thead><tr>${th('Store',HT.store)}${th('POC','Cluster POC (STORE_CATEGORY_DELTA)')}${th('Cluster')}${th('Zone')}${th('Type')}${th('Store fill after IST',HT.fillS,'n')}${th('Fresh budget',HT.bud,'n')}
  ${th('Cat base',HT.cbase,'n')}${th('Stock+JIT',HT.stock,'n')}${th('Fill now',HT.fNow,'n')}${th('After JIT',HT.fJit,'n')}${th('After IST',HT.fIst,'n')}${th('Cat mix act / ideal',HT.mix,'n')}
  ${th('Options',HT.opts,'n')}${th('Ideal opts',HT.iopts,'n')}${th('Opt gap',HT.ogap,'n')}${th('L30',HT.l30,'n')}${th('STR',HT.str,'n')}${th('DOI',HT.doi,'n')}${th('Cut %',HT.cut,'n')}
  ${th('Fresh %',HT.fresh,'n')}${th('Aged >120d',HT.aged,'n')}${th('No sale 30d',HT.nos,'n')}${th('Cat target MTD',HT.ctgt,'n')}${th('Cat achieved MTD',HT.cach,'n')}</tr></thead><tbody>${
  sts.map(si=>{const s=S[si],h=combinedHealth(si);if(!h)return'';const catAct=s[11]?h.stock/s[11]:0,sf=storeFill(si),bud=freshBudget(si,'both',null);
  const fc=x=>x<0?'':x>1.1?'bad':x<.85?'warn':'good',behind=h.catTarget?h.catTargetPct<100:false;
- return `<tr class="click" data-si="${si}"><td>${esc(s[1])}</td><td>${esc(s[6])}</td><td>${s[5]}</td><td>${s[2]}</td>
+ return `<tr class="click" data-si="${si}"><td>${esc(s[1])}</td><td>${esc(s[17])}</td><td>${esc(s[6])}</td><td>${s[5]}</td><td>${s[2]}</td>
  <td class="n ${sf?fc(sf.ist):''}" data-v="${sf?sf.ist:-1}" title="${sf?'now '+pc(sf.now)+' · after JIT '+pc(sf.jit)+' · base '+f0(s[12]):'no STORE_CATEGORY_DELTA row'}">${sf?pc(sf.ist):'–'}</td>
- <td class="n" data-v="${bud.total}" title="${esc(bud.why||('Shirts '+bud.cats[0]+' · T-shirts '+bud.cats[1]))}">${bud.total?f0(bud.total):'<span class="mut">0</span>'}</td>
+ <td class="n" data-v="${sum(bud.cats)}" title="${esc(bud.why||('Shirts '+bud.cats[0]+' · T-shirts '+bud.cats[1]))}">${sum(bud.cats)?f0(sum(bud.cats)):bud.noCatDelta?'<span class="warn">0 ⚠</span>':'<span class="mut">0</span>'}</td>
  <td class="n">${f0(h.catBase)}</td><td class="n">${f0(h.stock)}</td>
  <td class="n ${fc(h.fillNow)}" data-v="${h.fillNow}">${pc(h.fillNow)}</td><td class="n ${fc(h.fillJit)}" data-v="${h.fillJit}">${pc(h.fillJit)}</td><td class="n ${fc(h.fillIst)}" data-v="${h.fillIst}">${pc(h.fillIst)}</td>
  <td class="n" data-v="${catAct-h.idealCat}">${pc(catAct)} / ${pc(h.idealCat)}</td>
@@ -641,13 +662,15 @@ function refresh2(){
  <td class="n ${h.aged>.3?'bad':''}" data-v="${h.aged}">${pc(h.aged)}</td><td class="n">${h.noSale}</td>
  <td class="n" data-v="${h.catTarget}">${h.catTarget?'₹'+f0(h.catTarget):'–'}</td><td class="n ${h.catTarget?(behind?'bad':'good'):''}" data-v="${h.catTargetPct}">${h.catTarget?f1(h.catTargetPct)+'%':'–'}</td></tr>`}).join('')}</tbody></table>
  <div class="hint" style="margin-top:4px">Category targets are <b>MTD</b> (to yesterday, ${pc(DAYFRAC)} of the month): the monthly FACT_PARETO category target pro-rated by days. Red = below 100% of MTD target. ${catBoth?'Both categories are summed.':''}</div>`;
- sortable(el);el.querySelectorAll('tr.click').forEach(tr=>tr.onclick=()=>openStore(+tr.dataset.si,F.cat===''?DCAT:+F.cat,true));
- if(sts.length===1)storeDetail(sts[0]);else document.getElementById('storeDetail').innerHTML='';
+ const show=DSI!==null&&DSI>=0&&sts.includes(DSI)?DSI:DSI===null&&sts.length===1?sts[0]:null;
+ sortable(el);el.querySelectorAll('tr.click').forEach(tr=>{if(+tr.dataset.si===show)tr.classList.add('sel');
+  tr.onclick=()=>{DSI=+tr.dataset.si;if(F.cat!=='')DCAT=+F.cat;refresh2();document.getElementById('storeDetail').scrollIntoView({behavior:'smooth'})}});   // filters stay as they are
+ if(show!==null)storeDetail(show);else document.getElementById('storeDetail').innerHTML='';
  runPreview();
 }
-function openStore(si,c,keepFilters){
- tabGo('health');if(!keepFilters){Object.assign(F,{zone:'',cluster:'',type:'',band:'',age:''});['fZone','fType','fBand','fAge'].forEach(id=>document.getElementById(id).value='')}
- F.stores=new Set([si]);DCAT=c;refresh2();document.getElementById('storeDetail').scrollIntoView({behavior:'smooth'})}
+function openStore(si,c){        // from a Nudges alert: keep the current filters if the store is in them, else clear them
+ tabGo('health');if(!storesFiltered().includes(si)){Object.assign(F,{zone:'',poc:'',cluster:'',type:'',band:'',age:'',stores:new Set()});['fZone','fType','fBand','fAge'].forEach(id=>document.getElementById(id).value='')}
+ DSI=si;DCAT=c;refresh2();document.getElementById('storeDetail').scrollIntoView({behavior:'smooth'})}
 function bars(obj,label,keys,note){
  keys=keys||Object.keys(obj).sort((p,q)=>(obj[q][0]+obj[q][1])-(obj[p][0]+obj[p][1]));
  const mx=Math.max(.01,...keys.map(x=>Math.max(...(obj[x]||[0,0]))));
@@ -657,14 +680,14 @@ function bars(obj,label,keys,note){
 const skuMini=rows=>rows.length?`<table class="mini2"><thead><tr><th>SKU</th><th>Colour</th><th class="n" title="Store stock incl. JIT">Units</th><th class="n" title="Units sold in 30 days">L30</th><th class="n" title="Days since the style first arrived at the store">Age (d)</th></tr></thead><tbody>${rows.map(r=>`<tr class="click" onclick="showSku('${K[r[1]][0]}')"><td>${K[r[1]][0]}</td><td class="mut">${esc(W[K[r[1]][10]])}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[5]}</td></tr>`).join('')}</tbody></table>`:'<div class="mut">none</div>';
 function storeDetail(si){
  const s=S[si],el=document.getElementById('storeDetail'),c=DCAT,hh=catHealth(si,c),sf=storeFill(si),bud=freshBudget(si,'both',null);
- let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">${esc(s[1])} <span class="mut" style="font-weight:400">BC ${s[0]} · ${esc(s[6])} · ${s[5]} · ${s[2]} · ${esc(s[4])} · ${f0(s[8])} sqft · DOI cap ${s[10]}d</span></h2>
+ let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">${esc(s[1])} <span class="mut" style="font-weight:400">BC ${s[0]} · POC ${esc(s[17])} · ${esc(s[6])} · ${s[5]} · ${s[2]} · ${esc(s[4])} · ${f0(s[8])} sqft · DOI cap ${s[10]}d</span></h2>
   <div class="bar2">${radio('dcat',CATS.map((x,i)=>[String(i),x==='SHIRTS'?'Shirts':'T-shirts']),String(c))}<button class="b" id="sdClose">Close</button></div></div>
   <h3>Store (all categories, STORE_CATEGORY_DELTA)</h3><div class="kpi">
    <div><b>${f0(s[12])}</b><span>base stock</span></div>
    <div title="${esc(HT.fNow)} (store level)"><b>${sf?pc(sf.now):'–'}</b><span>fill now (${f0(s[13])} units)</span></div>
    <div title="${esc(HT.fJit)} (store level)"><b>${sf?pc(sf.jit):'–'}</b><span>fill after JIT (${f0(s[14])})</span></div>
    <div title="${esc(HT.fillS)}"><b>${sf?pc(sf.ist):'–'}</b><span>fill after JIT + IST (${f0(s[15])})</span></div>
-   <div title="${esc(HT.bud)}"><b>${f0(bud.total)}</b><span>fresh budget${bud.total?' · Shirts '+bud.cats[0]+' · T-shirts '+bud.cats[1]:' · '+esc(bud.why)}</span></div></div>`;
+   <div title="${esc(HT.bud)}"><b class="${bud.noCatDelta?'warn':''}">${f0(sum(bud.cats))}${bud.noCatDelta?' ⚠':''}</b><span>fresh budget${sum(bud.cats)?' · Shirts '+bud.cats[0]+' · T-shirts '+bud.cats[1]:' · '+esc(bud.why)}</span></div></div>`;
  if(!hh){el.innerHTML=h+`<div class="mut" style="margin-top:10px">No ${CATS[c]} health row for this store.</div></div>`;wireDetail();return}
  const sk=storeStock[si].filter(r=>K[r[1]][1]===c&&skuOk(r[1]));
  const cut=sk.filter(r=>r[6]).sort((p,q)=>q[4]-p[4]).slice(0,15),aged=sk.filter(r=>r[5]>120&&r[3]===0).sort((p,q)=>q[2]-p[2]).slice(0,15),top=sk.slice().sort((p,q)=>q[4]-p[4]).slice(0,10);
@@ -698,7 +721,7 @@ function storeDetail(si){
 }
 function wireDetail(){const el=document.getElementById('storeDetail');
  wireRadio(el,'dcat',v=>{DCAT=+v;refresh2()});wireRadio(el,'mbench',v=>{MBENCH=v;refresh2()});
- const b=document.getElementById('sdClose');if(b)b.onclick=()=>{F.stores=new Set();refresh2()}}
+ const b=document.getElementById('sdClose');if(b)b.onclick=()=>{DSI=-1;refresh2()}}
 
 // ---------------------------------------------------------------- TAB 2 fresh allocation run
 const WLAB={ros:'Expected sell-through',str:'Store STR',mix_gap:'Metafield gap closed',option_gap:'Option gap (fresh)',fill_gap:'Fill room used',
@@ -732,25 +755,31 @@ wInputs();wExplain();document.getElementById('wReset').onclick=e=>{e.preventDefa
 document.getElementById('aCover').value=D.alloc.days_cover;
 const cfgNow=()=>({cover:+document.getElementById('aCover').value||D.alloc.days_cover,fill:D.alloc.fill_ceiling});
 document.getElementById('aCover').onchange=()=>{if(CUR!==null)renderPlacement()};
-const R={scope:'filtered',store:'',clusters:new Set(),units:'auto',manual:100,cat:'both'};
+const R={scope:'filtered',store:'',clusters:new Set(),units:'auto',mkind:'units',min:'',max:120,fill:110,cat:'both',force:false};
+const budgetSpec=()=>R.units==='auto'?{kind:'auto',force:R.force}:{kind:R.mkind,min:R.min,max:R.max,fill:R.fill,force:R.force};
 function runUI(){
  document.getElementById('rScope').innerHTML=radio('rscope',[['filtered','Filtered stores','The stores matching the filters on the Store Health tab'],['store','One store','Run for a single store'],['cluster','Clusters','Run for every store in the chosen cluster(s)']],R.scope);
  const ss=S.map((s,i)=>[i,s[1]]).sort((p,q)=>p[1].localeCompare(q[1]));
  document.getElementById('rScopeSel').innerHTML=R.scope==='store'?`<select id="rStore" style="width:100%"><option value="">Pick a store…</option>${ss.map(([i,n])=>`<option value="${i}" ${String(i)===R.store?'selected':''}>${esc(n)}</option>`).join('')}</select>`
   :R.scope==='cluster'?`<select id="rClus" multiple size="5" style="width:100%" title="Ctrl / Cmd-click for several">${uniq(6).map(x=>`<option ${R.clusters.has(x)?'selected':''}>${esc(x)}</option>`).join('')}</select>`
   :`<span class="hint">${storesFiltered().length} stores from the Store Health tab filters</span>`;
- document.getElementById('rUnits').innerHTML=radio('runits',[['auto','Auto ('+Math.round(D.fresh.fill_budget*100)+'% budget)','Units = '+Math.round(D.fresh.fill_budget*100)+'% × base stock − net stock after JIT + IST; stores at or above it get nothing'],['manual','Manual','You set the units per store; the fill check is skipped']],R.units);
- document.getElementById('rUnitsSel').innerHTML=R.units==='manual'?`<label>Units per store <input id="rManual" type="number" min="0" step="12" value="${R.manual}" style="width:80px"></label>`:'<span class="hint">split by category gap, see the Fresh budget column</span>';
+ document.getElementById('rUnits').innerHTML=radio('runits',[['auto','Auto ('+Math.round(D.fresh.fill_budget*100)+'% budget)','Units = '+Math.round(D.fresh.fill_budget*100)+'% × base stock − net stock after JIT + IST; stores at or above it get nothing'],['manual','Manual','Set your own units, styles or fill-rate target per store']],R.units);
+ document.getElementById('rUnitsSel').innerHTML=R.units==='manual'?`<select id="rMk" title="Give one of these per store">
+   <option value="units" ${R.mkind==='units'?'selected':''}>Units per store</option><option value="options" ${R.mkind==='options'?'selected':''}>Options (styles) per store</option><option value="fill" ${R.mkind==='fill'?'selected':''}>Fill-rate target %</option></select>
+  <div style="margin-top:6px">${R.mkind==='fill'?`<label title="Units = target % × base stock − net stock after JIT + IST; stores already at or above it get nothing">Fill to <input id="rFill" type="number" min="50" max="200" step="5" value="${R.fill}" style="width:64px"> % of base</label>`
+   :`<label title="${R.mkind==='options'?'Styles per store; units = styles × the store\'s category depth (DEPT_IDEAL), e.g. 10 styles × depth 12 = 120 units':'Units per store'}. Max is the cap; min is optional — stores ending below it are flagged">${R.mkind==='options'?'Styles':'Units'} min <input id="rMin" type="number" min="0" value="${R.min}" placeholder="opt." style="width:56px"> max <input id="rMax" type="number" min="0" value="${R.max}" style="width:64px"></label>`}</div>`
+  :'<span class="hint">split by category delta, see the Fresh budget column</span>';
  document.getElementById('rCat').innerHTML=radio('rcat',[['both','Both','Split between Shirts and T-shirts by category gap (category base − net stock after IST)'],['0','Shirts','Only Shirts'],['1','T-shirts','Only T-shirts']],R.cat);
  const root=document.getElementById('t-alloc');
  wireRadio(root,'rscope',v=>{R.scope=v;runUI()});wireRadio(root,'runits',v=>{R.units=v;runUI()});wireRadio(root,'rcat',v=>{R.cat=v;renderRF()});
  const st=document.getElementById('rStore');if(st)st.onchange=()=>{R.store=st.value;runPreview()};
  const cl=document.getElementById('rClus');if(cl)cl.onchange=()=>{R.clusters=new Set([...cl.selectedOptions].map(o=>o.value));runPreview()};
- const mn=document.getElementById('rManual');if(mn)mn.oninput=()=>{R.manual=Math.max(0,+mn.value||0);runPreview()};
+ const mk=document.getElementById('rMk');if(mk)mk.onchange=()=>{R.mkind=mk.value;if(R.mkind==='options'&&R.max>40)R.max=10;if(R.mkind==='units'&&R.max<40)R.max=120;runUI()};
+ [['rMin','min'],['rMax','max'],['rFill','fill']].forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.oninput=()=>{R[k]=e.value===''?'':Math.max(0,+e.value);runPreview()}});
  runPreview()}
 function scopeStores(){if(R.scope==='store')return R.store===''?[]:[+R.store];
  if(R.scope==='cluster'){const out=[];for(let si=0;si<NS;si++)if(R.clusters.has(S[si][6]))out.push(si);return out}return storesFiltered()}
-function budgets(sts){const m=new Map(),per=[];for(const si of sts){const b=freshBudget(si,R.cat,R.units==='manual'?R.manual:null);per.push([si,b]);
+function budgets(sts){const m=new Map(),per=[],spec=budgetSpec();for(const si of sts){const b=freshBudget(si,R.cat,spec);per.push([si,b]);
  if(b.cats[0])m.set(si*2,b.cats[0]);if(b.cats[1])m.set(si*2+1,b.cats[1])}return {m,per}}
 // fresh-run SKU filters (store_avail.py filters): warehouse, fresh / repeat, prepack, depth, allocation status, SKU,
 // style, design, sleeve, fit, collar, material, MRP range, live year. Each list shows only values left by the other filters.
@@ -802,17 +831,28 @@ function renderRF(){
 document.addEventListener('click',e=>{document.querySelectorAll('.msx.open').forEach(m=>{if(!m.contains(e.target)){m.classList.remove('open');OPENMSX=null}})});
 document.getElementById('rfClear').onclick=e=>{e.preventDefault();Object.assign(RF,{wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{},maxCol:'all',nrc:'yes'});OPENMSX=null;renderRF()};
 function runPreview(){const el=document.getElementById('aPreview');if(!el)return;const sts=scopeStores(),{per}=budgets(sts),q=per.filter(x=>sum(x[1].cats)>0);
- el.textContent=sts.length?`${sts.length} stores in scope · ${q.length} get fresh units · budget ${f0(sum(q.map(x=>sum(x[1].cats))))} units · ${poolSkus().length} fresh-pool SKUs`:'Pick the stores to run for.'}
-let LAST=[],LASTPER=[];
+ el.textContent=sts.length?`${sts.length} stores in scope · ${q.length} get fresh units · budget ${f0(sum(q.map(x=>sum(x[1].cats))))} units · ${poolSkus().length} fresh-pool SKUs`:'Pick the stores to run for.';
+ // stores with room overall but no Shirts / T-shirts delta: held back until the user forces them
+ const nd=R.force?budgets(sts).per.filter(x=>x[1].forced&&sum(x[1].cats)):(per.filter(x=>x[1].noCatDelta)),box=document.getElementById('aAlert');
+ box.innerHTML=!nd.length?'':R.force?`<div class="alertbox ok"><b>Force allocate is ON</b> for ${nd.length} store(s) with no Shirts / T-shirts delta — their budget is split by category base. <button class="b" id="aUnforce">Undo (hold them back)</button></div>`
+  :`<div class="alertbox"><b>⚠ ${nd.length} store(s) have fresh room overall but no Shirts / T-shirts delta</b> (both categories are already at or above their category base after JIT + IST), so they are <b>not allocated</b>.
+   <details style="display:inline"><summary class="mut" style="display:inline;cursor:pointer">show stores</summary> ${nd.map(([si,b])=>esc(S[si][1])+' ('+f0(b.total)+'u)').join(', ')}</details>
+   <div style="margin-top:6px"><button class="b" id="aAccept">OK, keep them out</button> <button class="b p" id="aForce">Force allocate these stores</button></div></div>`;
+ const reRun=()=>{runPreview();if(RAN)document.getElementById('aRun').click()};
+ const fo=document.getElementById('aForce');if(fo)fo.onclick=()=>{R.force=true;reRun()};
+ const ac=document.getElementById('aAccept');if(ac)ac.onclick=()=>{box.innerHTML='<div class="hint">Kept out: '+nd.length+' store(s) with no category delta.</div>'};
+ const un=document.getElementById('aUnforce');if(un)un.onclick=()=>{R.force=false;reRun()}}
+let LAST=[],LASTPER=[],RAN=false;
 document.getElementById('aRun').onclick=()=>{
  const t0=performance.now(),sts=scopeStores(),{m,per}=budgets(sts),use=per.filter(x=>sum(x[1].cats)>0).map(x=>x[0]),ks=poolSkus();
  const out=use.length?allocate(ks,use,'fresh',cfgNow(),weights(),{fresh:true,budget:m,zone:RF.wh==='all'?null:RF.wh==='north'?0:1,ftype:RF.ftype==='all'?null:RF.ftype,maxColours:RF.maxCol==='all'?Infinity:+RF.maxCol}):[];
- LAST=out;LASTPER=per;renderAlloc(out,ks,sts,per,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;
+ LAST=out;LASTPER=per;RAN=true;renderAlloc(out,ks,sts,per,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;
 };
 function renderAlloc(out,ks,sts,per,ms){
  const units=sum(out.map(r=>r.units)),n=sum(out.filter(r=>!r.z).map(r=>r.units)),bud=sum(per.map(x=>sum(x[1].cats)));
  const used={};out.forEach(r=>{const key=r.si*2+K[r.k][1];used[key]=(used[key]||0)+r.units});
  const noProj=ks.filter(k=>K[k][32]<0).length,bad=out.filter(r=>!r.ok).length;
+ const lowMin=per.filter(([si,b])=>b.min&&sum(b.cats)&&(used[si*2]||0)+(used[si*2+1]||0)<b.min).length,nd=per.filter(x=>x[1].noCatDelta).length;
  document.getElementById('allocSum').innerHTML=`<div class="kpi"><div><b>${f0(units)}</b><span>units allocated</span></div>
  <div title="Sum of the store budgets (auto or manual)"><b>${f0(bud)}</b><span>budget · ${bud?pc(units/bud):'–'} used</span></div>
  <div><b>${new Set(out.map(r=>r.si)).size} / ${per.filter(x=>sum(x[1].cats)).length}</b><span>stores served / with budget (${sts.length} in scope)</span></div>
@@ -822,12 +862,14 @@ function renderAlloc(out,ks,sts,per,ms){
  <div><b>${f0(sum(out.map(r=>r.sold)))}</b><span>expected sales in ${cfgNow().cover}d</span></div>
  <div title="Lines whose units / codes were all on hand when taken"><b class="${bad?'bad':'good'}">${bad?bad+' ✗':'all ✓'}</b><span>fulfilment check</span></div>
  <div><b>${(ms/1000).toFixed(1)}s</b><span>run time</span></div></div>
+ ${lowMin?`<div class="warn" style="margin-top:4px">${lowMin} store(s) ended below the minimum (not enough fresh SKUs / WH stock that fit) — see the budget table.</div>`:''}
+ ${nd?`<div class="warn" style="margin-top:4px">${nd} store(s) held back: room overall but no Shirts / T-shirts delta (use "Force allocate" above to include them).</div>`:''}
  ${noProj?`<div class="hint" style="margin-top:4px">${noProj} fresh-pool SKUs have no demand projection (no similar SKUs) and were skipped.</div>`:''}
  ${!out.length?'<div class="warn" style="margin-top:6px">Nothing allocated: no store in scope has budget (fill after JIT + IST already ≥ '+Math.round(D.fresh.fill_budget*100)+'%), or no fresh SKU clears the demand bar.</div>':''}
  <details style="margin-top:8px"><summary class="mut" style="cursor:pointer">Budget per store (${per.length})</summary><div class="scroll" style="max-height:320px"><table class="mini2"><thead><tr><th>Store</th><th>Cluster</th>
   <th class="n" title="Store base stock (STORE_CATEGORY_DELTA)">Base</th><th class="n" title="${esc(HT.fillS)}">Fill after IST</th><th class="n">Budget</th><th class="n">Shirts budget → used</th><th class="n">T-shirts budget → used</th><th>Note</th></tr></thead><tbody>${
-  per.map(([si,b])=>{const sf=storeFill(si);return `<tr><td>${esc(S[si][1])}</td><td>${esc(S[si][6])}</td><td class="n">${f0(S[si][12])}</td><td class="n">${sf?pc(sf.ist):'–'}</td><td class="n">${f0(b.total)}</td>
-  <td class="n">${b.cats[0]} → ${used[si*2]||0}</td><td class="n">${b.cats[1]} → ${used[si*2+1]||0}</td><td class="mut">${esc(b.why||'')}</td></tr>`}).join('')}</tbody></table></div></details>`;
+  per.map(([si,b])=>{const sf=storeFill(si),u=(used[si*2]||0)+(used[si*2+1]||0),lowMin=b.min&&sum(b.cats)&&u<b.min;return `<tr${lowMin?' class="warn"':''}><td>${esc(S[si][1])}</td><td>${esc(S[si][6])}</td><td class="n">${f0(S[si][12])}</td><td class="n">${sf?pc(sf.ist):'–'}</td><td class="n">${f0(b.total)}</td>
+  <td class="n">${b.cats[0]} → ${used[si*2]||0}</td><td class="n">${b.cats[1]} → ${used[si*2+1]||0}</td><td class="mut">${esc((b.why||'')+(lowMin?' below min '+b.min+'u':''))}</td></tr>`}).join('')}</tbody></table></div></details>`;
  const el=document.getElementById('allocTbl');
  el.innerHTML=(out.length>2000?'<div class="hint">Showing the top 2,000 of '+f0(out.length)+' lines (the CSV has all of them).</div>':'')+(out.length?allocTable(out,2000):'');sortable(el);
 }
