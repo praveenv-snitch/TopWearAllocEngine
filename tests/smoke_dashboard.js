@@ -72,7 +72,8 @@ ok(pchk.nViol === 0, 'placement rule violations'); ok(pchk.fresh_prepack + pchk.
 tabsel = s => { const e = $(s); return e; };
 console.log('\n[TAB2] health rows', d.querySelectorAll('#healthTbl tbody tr').length, '| detail shown:', !!$('storeDetail').innerHTML);
 ok($('storeDetail').innerHTML === '', 'store detail shown without a single store');
-d.querySelector('#healthTbl tbody tr.click').click();
+const nBefore = d.querySelectorAll('#healthTbl tbody tr').length; d.querySelector('#healthTbl tbody tr.click').click();
+ok(d.querySelectorAll('#healthTbl tbody tr').length === nBefore && ev('F.stores.size') === 0, 'row click changed the store filter');
 ok(d.querySelectorAll('#storeDetail .kpi').length >= 2, 'store detail not opened by row click');
 ok(d.querySelectorAll('#storeDetail table.mini2 thead th').length >= 5, 'mini tables have no headers');
 const mOne = txt(d.querySelector('#storeDetail .bar .d'));
@@ -81,10 +82,20 @@ console.log('  meta toggle ideal -> sales, first deviation:', mOne, '->', txt(d.
 const dc = d.querySelector('[data-r="dcat"] input[value="1"]'); dc.checked = true; dc.dispatchEvent(new w.Event('change'));
 ok(txt(d.querySelector('#storeDetail')).includes('T-SHIRTS'), 'category toggle in detail');
 $('sdClose').click(); ok($('storeDetail').innerHTML === '', 'detail did not vanish after close');
-const stockCol = () => [...d.querySelectorAll('#healthTbl tbody tr')].map(r => r.cells[7].textContent).join(',');
+const stockCol = () => [...d.querySelectorAll('#healthTbl tbody tr')].map(r => r.cells[8].textContent).join(',');
 const before2 = stockCol(); $('fBand').value = D_bands1 = ev('D.bands[1]'); $('fBand').dispatchEvent(new w.Event('change'));
 ok(stockCol() !== before2, 'price filter does not change health'); console.log('  price filter', D_bands1, 'changes health:', stockCol() !== before2, '|', txt($('fNote')).slice(0, 90));
 $('fReset').click(); ok(stockCol() === before2 && $('fBand').value === '', 'reset filters');
+
+// POC filter cascades: POC -> clusters -> stores; stores mapped to another cluster's POC stay with their POC
+{ const pz = ev(`(()=>{const p=[...new Set(S.map(s=>s[17]))].find(x=>new Set(S.filter(s=>s[17]===x).map(s=>s[6])).size>1);return p})()`);
+  $('fPoc').value = pz; $('fPoc').dispatchEvent(new w.Event('change'));
+  const pc2 = JSON.parse(ev(`JSON.stringify({poc:F.poc,stores:storesFiltered().length,allPoc:storesFiltered().every(si=>S[si][17]===F.poc),
+   clusters:[...document.getElementById('fClus').options].slice(1).map(o=>o.value),clusterOptsOk:[...document.getElementById('fClus').options].slice(1).every(o=>S.some(s=>s[17]===F.poc&&s[6]===o.value))})`));
+  console.log('  POC filter:', JSON.stringify(pc2)); ok(pc2.allPoc && pc2.clusterOptsOk && pc2.clusters.length > 1, 'POC filter not cascading');
+  $('fClus').value = pc2.clusters[0]; $('fClus').dispatchEvent(new w.Event('change'));
+  ok(ev(`storesFiltered().every(si=>S[si][17]===F.poc&&S[si][6]===F.cluster)`), 'POC + cluster filter');
+  $('fReset').click(); ok(ev('F.poc') === '' && $('fPoc').value === '', 'reset POC'); }
 
 // --- TAB 2 fresh run: auto over all stores
 t = Date.now(); $('aRun').click();
@@ -102,7 +113,7 @@ console.log('  budget check:', JSON.stringify(bchk)); ok(bchk.nViol === 0, 'budg
 ok(d.querySelectorAll('#allocTbl th[title]').length > 10, 'column tooltips missing');
 $('aCsv').click();
 // manual: one store, Shirts only, 60 units
-ev(`R.scope='store';R.store=String(LASTPER.find(x=>x[1].total>0)?.[0]??0);R.units='manual';R.manual=60;R.cat='0';runUI()`); $('aRun').click();
+ev(`R.scope='store';R.store=String(LASTPER.find(x=>x[1].total>0)?.[0]??0);R.units='manual';R.mkind='units';R.min='';R.max=60;R.cat='0';runUI()`); $('aRun').click();
 const man = JSON.parse(ev(`JSON.stringify({units:sum(LAST.map(r=>r.units)),stores:new Set(LAST.map(r=>r.si)).size,cats:[...new Set(LAST.map(r=>K[r.k][1]))]})`));
 console.log('  manual one store / Shirts / 60u:', JSON.stringify(man)); ok(man.units <= 60 && man.stores <= 1 && man.cats.every(c => c === 0), 'manual run limits');
 ev(`R.scope='cluster';R.clusters=new Set([S[0][6]]);R.units='auto';R.cat='both';runUI()`); $('aRun').click();
@@ -134,6 +145,21 @@ console.log('  family colours picked by colour gap, order breaks:', gapOrder);
 $('rfClear').click(); ok(ev('RF.wh')==='all' && !Object.keys(ev('RF.sets')).length, 'clear SKU filters');
 ok(!!d.querySelector('#wExplain table') && !d.querySelector('details.wexp').open, 'weights explainer missing or open');
 
+// manual budget modes + no-category-delta alert
+ev(`Object.assign(RF,{wh:'all',ftype:'all',sets:{},maxCol:'all',nrc:'yes'});R.scope='filtered';R.cat='both';R.units='manual';R.mkind='options';R.min=2;R.max=5;R.force=false;runUI()`);
+const opt = JSON.parse(ev(`(()=>{const {per}=budgets(scopeStores());const bad=per.filter(([si,b])=>!b.noCatDelta&&sum(b.cats)&&[0,1].some(c=>b.cats[c]%((D.health[si][c]||{}).depth||12)!==0)).length;
+ const ex=per.find(([si,b])=>sum(b.cats));return JSON.stringify({bad,example:ex?S[ex[0]][1]+': '+ex[1].cats.join(' / ')+' units for 5 styles, depth '+[0,1].map(c=>(D.health[ex[0]][c]||{}).depth).join('/'):''})})()`));
+console.log('  manual options (2-5 styles):', JSON.stringify(opt)); ok(opt.bad === 0, 'options not converted by depth');
+ev(`R.mkind='fill';R.fill=130;runUI()`);
+const fl = JSON.parse(ev(`(()=>{const {per}=budgets(scopeStores());const bad=per.filter(([si,b])=>S[si][16]&&b.total!==Math.max(0,Math.floor(1.3*S[si][12]-S[si][15]))).length;return JSON.stringify({bad,stores:per.filter(x=>sum(x[1].cats)).length})})()`));
+console.log('  manual fill 130%:', JSON.stringify(fl)); ok(fl.bad === 0, 'fill-rate target formula');
+ev(`R.units='auto';R.force=false;runUI()`); $('aRun').click();
+const nd = JSON.parse(ev(`JSON.stringify({held:LASTPER.filter(x=>x[1].noCatDelta).length,servedHeld:LAST.filter(r=>LASTPER.find(x=>x[0]===r.si)[1].noCatDelta).length,alert:!!document.getElementById('aForce')})`));
+console.log('  no-category-delta stores held back:', JSON.stringify(nd)); ok(nd.servedHeld === 0, 'held-back store got units');
+if (nd.held) { ok(nd.alert, 'no alert for held-back stores'); $('aForce').click();
+  const fz2 = JSON.parse(ev(`JSON.stringify({forced:LASTPER.filter(x=>x[1].forced&&sum(x[1].cats)).length,servedForced:new Set(LAST.filter(r=>LASTPER.find(x=>x[0]===r.si)[1].forced).map(r=>r.si)).size,undo:!!document.getElementById('aUnforce')})`));
+  console.log('  after Force allocate:', JSON.stringify(fz2)); ok(fz2.forced > 0 && fz2.undo, 'force allocate'); $('aUnforce').click(); ok(!ev('R.force'), 'undo force'); }
+
 // --- TAB 3
 const nh = txt($('nudgeOut'));
 console.log('\n[TAB3]', txt(d.querySelector('#nudgeOut h2')), '|', txt(d.querySelector('#nudgeOut .legend')).slice(0, 120));
@@ -152,7 +178,7 @@ const ac = $('aClus'); ac.value = ac.options[1].value; ac.dispatchEvent(new w.Ev
 console.log('  alerts after cluster filter:', txt(d.querySelector('#alertCard h2')), '| store options', $('aStore').options.length - 1);
 ok([...$('aStore').options].slice(1).every(o => ev(`S[${o.value}][6]`) === ac.value), 'alert store list not cascading');
 d.querySelector('#alertCard tbody tr.click').click();
-ok(d.querySelectorAll('#storeDetail .kpi').length >= 2 && ev('F.stores.size') === 1 && $('t-health').classList.contains('on'), 'alert click did not open store health');
+ok(d.querySelectorAll('#storeDetail .kpi').length >= 2 && ev('DSI') >= 0 && $('t-health').classList.contains('on'), 'alert click did not open store health');
 ok(txt($('healthTbl')).includes('MTD'), 'MTD note missing');
 console.log('  alert click -> store detail:', txt(d.querySelector('#storeDetail h2')).slice(0, 60));
 console.log('\nerrors:', errs.length, errs.slice(0, 3), '| failed checks:', fails.length ? fails : 'none');
