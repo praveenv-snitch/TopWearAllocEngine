@@ -363,14 +363,17 @@ function allocTable(out,limit){
  <td class="n ${h.fill>1.4?'bad':h.fill<.85?'good':''}">${pc(h.fill)}</td><td class="n">${pc(h.str)}</td>
  <td class="n ${r.f.mixGap>0?'good':''}" data-v="${r.f.mixGap}">${(r.f.mixGap*100).toFixed(1)}pp</td><td class="n ${r.f.colGap>0?'good':''}" data-v="${r.f.colGap}">${(r.f.colGap*100).toFixed(1)}pp</td>
  <td class="n ${r.f.priceGap>0?'good':''}" data-v="${r.f.priceGap}">${(r.f.priceGap*100).toFixed(1)}pp</td></tr>`}).join('')}</tbody></table>`}
+// Download: one row per item to pick. LOOSE -> one row per size, SKU_CODE = SKU group + '-' + size, QTY = units of that size.
+// PREPACK -> one row per prepack serial code (each code is one sealed pack), SKU_CODE = the code, QTY = 1.
+const SKU_SIZE={'3XL':'XXXL'};             // size suffix used in item codes (e.g. 4MST2237-07-XXXL)
 function downloadAlloc(out,name){
- const hdr=['BRANCH_CODE','STORE','CLUSTER','ZONE','SKU_GROUP','CATEGORY','PRODUCT_NAME','COLOUR','MRP','AGE_TAG','NRC','TYPE','PACK_TYPE','PREPACKS','PREPACK_DEPTH','PREPACK_CODES','UNITS',...SZ.map(z=>'QTY_'+z),
-  'WAREHOUSE','WH_AVAIL_BEFORE','WH_AVAIL_AFTER','FULFILLABLE','COLOUR_FAMILY','FALLBACK','SCORE','PROJ_ROS','PROJ_30D','EVIDENCE','STORE_STOCK_BEFORE','DOI_BEFORE','DOI_AFTER','STORE_FILL','STORE_STR','MIX_GAP_PP','COLOUR_GAP_PP','PRICE_GAP_PP'];
+ const hdr=['LINE_NO','BRANCH_CODE','STORE','CLUSTER','ZONE','WAREHOUSE','SKU_CODE','QTY','ITEM_TYPE','SKU_GROUP','SIZE','PREPACK_DEPTH','CATEGORY','COLOUR','MRP','ALLOCATION_TYPE','COLOUR_FAMILY'];
  const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
- const lines=[hdr.join(',')].concat(out.map(r=>{const a=K[r.k],s=S[r.si];return [s[0],s[1],s[6],s[5],a[0],CATS[a[1]],a[2],W[a[10]],a[13],AGE[a[22]],a[39]?'Y':'',r.type,r.packType,r.packs,r.depth||'',(r.codes||[]).join(' | '),r.units,...r.split,
-  r.z?'South':'North',r.availBefore,r.availAfter,r.ok?'Y':'N',r.family?'Y':'',r.fallback?'Y':'',r.s.toFixed(3),r.f.p.toFixed(3),(r.f.p*30).toFixed(1),EVTXT[r.f.ev],r.have,r.doiNow<0?'':r.doiNow.toFixed(0),r.doiAfter<0?'':r.doiAfter.toFixed(0),
-  (r.f.h.fill*100).toFixed(0),(r.f.h.str*100).toFixed(0),(r.f.mixGap*100).toFixed(1),(r.f.colGap*100).toFixed(1),(r.f.priceGap*100).toFixed(1)].map(q).join(',')}));
- const blob=new Blob([lines.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
+ const rows=[hdr.join(',')];
+ out.forEach((r,i)=>{const a=K[r.k],s=S[r.si],base=[i+1,s[0],s[1],s[6],s[5],r.z?'South':'North'],tail=[CATS[a[1]],W[a[10]],a[13],r.type,r.family?'Y':''];
+  if(r.packType==='PREPACK')(r.codes||[]).forEach(c=>rows.push([...base,c,1,'PREPACK',a[0],'',r.depth,...tail].map(q).join(',')));
+  else r.split.forEach((u,z)=>{if(u>0){const sz=SKU_SIZE[SZ[z]]||SZ[z];rows.push([...base,a[0]+'-'+sz,u,'LOOSE',a[0],sz,'',...tail].map(q).join(','))}})});
+ const blob=new Blob([rows.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
  el.href=u;el.download=name+'_'+new Date().toISOString().slice(0,10)+'.csv';el.click();URL.revokeObjectURL(u);
 }
 const PACK_RULES=`<b>FRESH</b> (store doesn't carry the SKU): exactly <b>2 prepacks</b> when the zone has 2 coded packs on hand, otherwise one loose
