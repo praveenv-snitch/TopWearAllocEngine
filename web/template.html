@@ -754,7 +754,7 @@ function budgets(sts){const m=new Map(),per=[];for(const si of sts){const b=fres
  if(b.cats[0])m.set(si*2,b.cats[0]);if(b.cats[1])m.set(si*2+1,b.cats[1])}return {m,per}}
 // fresh-run SKU filters (store_avail.py filters): warehouse, fresh / repeat, prepack, depth, allocation status, SKU,
 // style, design, sleeve, fit, collar, material, MRP range, live year. Each list shows only values left by the other filters.
-const RF={wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{},maxCol:'all'};let OPENMSX=null;
+const RF={wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{},maxCol:'all',nrc:'yes'};let OPENMSX=null;
 const RFDEF=[['status','Allocation status','stock',k=>W[POOL[k][0]]||'–'],['depth','Prepack depth','stock',k=>POOL[k][4]?String(POOL[k][4]):'no prepack'],
  ['style','Style','prod',k=>W[K[k][11]]||'–'],['design','Design','prod',k=>W[K[k][8]]||'–'],['sleeve','Sleeve','prod',k=>W[K[k][7]]||'–'],
  ['fit','Fit','prod',k=>W[K[k][5]]||'–'],['collar','Collar','prod',k=>W[K[k][4]]||'–'],['material','Material','prod',k=>W[K[k][6]]||'–'],
@@ -763,6 +763,7 @@ const rfCats=()=>R.cat==='both'?[0,1]:[+R.cat];
 function rfPass(k,skip){const a=K[k],p=POOL[k];
  if(RF.wh!=='all'){const z=RF.wh==='north'?0:1;if(!(p[1][z]>0||p[5][z]>0))return false}
  const pp=p[5][0]+p[5][1]>0;if(RF.prepack==='yes'&&!pp||RF.prepack==='no'&&pp)return false;
+ if(RF.nrc==='no'&&a[39]||RF.nrc==='only'&&!a[39])return false;
  if(RF.sku){const q=RF.sku.toUpperCase().split(/[\s,;]+/).filter(Boolean);if(q.length&&!q.some(x=>a[0].includes(x)))return false}
  if(RF.mrpMin!==''&&a[13]<+RF.mrpMin)return false;if(RF.mrpMax!==''&&a[13]>+RF.mrpMax)return false;
  for(const [id,,,fn] of RFDEF){if(id===skip)continue;const st=RF.sets[id];if(st&&st.size&&!st.has(fn(k)))return false}return true}
@@ -779,13 +780,15 @@ function renderRF(){
  const g=grp=>RFDEF.filter(x=>x[2]===grp).map(([id,l])=>msxHtml(id,l,opts(id))).join('');
  document.getElementById('rfStock').innerHTML=radio('rfwh',[['all','All WH (allow fallback)','Own-zone WH first, then the other zone if the own zone has none'],['north','North WH','Only stock in the North WH'],['south','South WH','Only stock in the South WH']],RF.wh)
   +radio('rfft',[['all','Fresh + repeat','Any store with no stock / JIT of the SKU now'],['fresh','Fresh','Store never carried the style'],['repeat','Repeat','Store carried the style before, has none now']],RF.ftype)
-  +`<label class="fi" title="Coded prepacks on hand for the SKU in the fresh pool">Prepack <select id="rfPP"><option value="">any</option><option value="yes" ${RF.prepack==='yes'?'selected':''}>available</option><option value="no" ${RF.prepack==='no'?'selected':''}>not available</option></select></label>`+g('stock');
+  +`<label class="fi" title="Coded prepacks on hand for the SKU in the fresh pool">Prepack <select id="rfPP"><option value="">any</option><option value="yes" ${RF.prepack==='yes'?'selected':''}>available</option><option value="no" ${RF.prepack==='no'?'selected':''}>not available</option></select></label>`
+  +`<label class="fi" title="NRC = non-replenishable cut: size-broken at 1+ stores AND the WH can build fewer than 5 full size sets">NRC SKUs <select id="rfNrc"><option value="yes" ${RF.nrc==='yes'?'selected':''}>include</option><option value="no" ${RF.nrc==='no'?'selected':''}>exclude</option><option value="only" ${RF.nrc==='only'?'selected':''}>only NRC</option></select></label>`+g('stock');
  document.getElementById('rfProd').innerHTML=`<input id="rfSku" title="One or more SKU codes (or parts), separated by space or comma; press Enter" placeholder="SKU(s), e.g. 4MSS4407" value="${esc(RF.sku)}" style="width:200px">`
   +`<label class="fi" title="When a style goes to a store, its other available colours go with it. All = every available colour; a number caps the colours per style per store, chosen by the store's colour gap">Colours per style <select id="rfMaxCol">${['all',1,2,3,4,5,6,8].map(v=>`<option value="${v}" ${String(v)===String(RF.maxCol)?'selected':''}>${v==='all'?'all available':v==1?'1 (no family)':'max '+v}</option>`).join('')}</select></label>`+g('prod');
  document.getElementById('rfPrice').innerHTML=`<label class="fi">MRP ₹ <input id="rfMin" type="number" min="0" placeholder="min" value="${RF.mrpMin}" style="width:80px"> – <input id="rfMax" type="number" min="0" placeholder="max" value="${RF.mrpMax}" style="width:80px"></label>`+g('price');
  const root=document.getElementById('t-alloc');
  wireRadio(root,'rfwh',v=>{RF.wh=v;renderRF()});wireRadio(root,'rfft',v=>{RF.ftype=v;renderRF()});
  document.getElementById('rfPP').onchange=e=>{RF.prepack=e.target.value;renderRF()};
+ document.getElementById('rfNrc').onchange=e=>{RF.nrc=e.target.value;renderRF()};
  document.getElementById('rfMaxCol').onchange=e=>{RF.maxCol=e.target.value;renderRF()};
  document.getElementById('rfSku').onchange=e=>{RF.sku=e.target.value.trim();renderRF()};
  document.getElementById('rfMin').onchange=e=>{RF.mrpMin=e.target.value;renderRF()};document.getElementById('rfMax').onchange=e=>{RF.mrpMax=e.target.value;renderRF()};
@@ -797,7 +800,7 @@ function renderRF(){
  document.getElementById('rfCount').textContent=`${f0(poolSkus().length)} of ${f0(base.length)} fresh-pool SKUs match`;
  runPreview()}
 document.addEventListener('click',e=>{document.querySelectorAll('.msx.open').forEach(m=>{if(!m.contains(e.target)){m.classList.remove('open');OPENMSX=null}})});
-document.getElementById('rfClear').onclick=e=>{e.preventDefault();Object.assign(RF,{wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{},maxCol:'all'});OPENMSX=null;renderRF()};
+document.getElementById('rfClear').onclick=e=>{e.preventDefault();Object.assign(RF,{wh:'all',ftype:'all',prepack:'',sku:'',mrpMin:'',mrpMax:'',sets:{},maxCol:'all',nrc:'yes'});OPENMSX=null;renderRF()};
 function runPreview(){const el=document.getElementById('aPreview');if(!el)return;const sts=scopeStores(),{per}=budgets(sts),q=per.filter(x=>sum(x[1].cats)>0);
  el.textContent=sts.length?`${sts.length} stores in scope · ${q.length} get fresh units · budget ${f0(sum(q.map(x=>sum(x[1].cats))))} units · ${poolSkus().length} fresh-pool SKUs`:'Pick the stores to run for.'}
 let LAST=[],LASTPER=[];
