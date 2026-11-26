@@ -1,7 +1,7 @@
 # Snitch TopWear Allocation Engine (Shirts + T-shirts)
 
 ```
-Worker cron 10:00 IST → GitHub Actions (or "Run workflow")
+Worker cron every 2 h, 10:00-18:00 IST → GitHub Actions (or "Run workflow")
         │  python -m engine.build
         ├─ pulls live store × SKU, product, WH, ideal-mix data from Snowflake (key-pair auth)
         ├─ embeds new/changed product images (Marqo-FashionSigLIP), cached between runs
@@ -63,7 +63,7 @@ How it works: `docs/similarity_logic.md` (similarity), `engine/demand.py` (proje
    ```
 3. Repo → Settings → Secrets and variables → **Actions**: add every secret from the table.
 4. Actions → **TopWear refresh** → **Run workflow**. The **first run embeds about 18k product images**, which takes roughly 1–2 h on GitHub's CPU runners. It checkpoints, so a cancelled run keeps its progress. The cache is saved as a release called `embeddings-cache`. Don't delete it, or the next run re-embeds everything. Daily runs after that take about 5 min.
-5. **On-time schedule:** create a fine-grained GitHub token (this repo only, *Actions: Read and write*), then `cd worker && npx wrangler secret put GH_TOKEN`. The Worker cron starts the refresh at 10:00 IST, and the GitHub `schedule:` is a backup. To change the time, edit both cron lists.
+5. **On-time schedule:** create a fine-grained GitHub token (this repo only, *Actions: Read and write*), then `cd worker && npx wrangler secret put GH_TOKEN`. The Worker cron starts the refresh every 2 hours at 10:00, 12:00, 14:00, 16:00 and 18:00 IST, and the GitHub `schedule:` is a backup. To change the time, edit both cron lists.
 6. **Password (recommended; the page holds store-level sales and stock):** `cd worker && npx wrangler secret put SITE_PASSWORD`, or use Cloudflare Zero Trust Access.
 
 ## Run locally / in a Snowflake workspace
