@@ -2,9 +2,10 @@ name: TopWear refresh
 
 on:
   schedule:
-    # Backup only. The on-time 10:00 IST run comes from the Cloudflare Worker cron (worker/wrangler.toml), because
-    # GitHub's scheduler is often 10-60 min late. If the Worker already ran this slot, this run skips itself.
-    - cron: "30 4 * * *"        # 10:00 IST (cron is UTC)
+    # Backup only. The on-time runs come from the Cloudflare Worker cron (worker/wrangler.toml), because GitHub's
+    # scheduler can be very late. Every 2 hours 10:00-18:00 IST (04:30-12:30 UTC) = 5 runs a day. A backup run skips
+    # itself if the Worker already ran this slot, or if GitHub fires it outside 10:00-18:30 IST.
+    - cron: "30 4-12/2 * * *"   # 10:00, 12:00, 14:00, 16:00, 18:00 IST (cron is UTC)
   workflow_dispatch:
     inputs:
       refresh_only:
@@ -52,6 +53,10 @@ jobs:
         run: |
           skip=false
           if [ "${{ github.event_name }}" = "schedule" ]; then
+            m=$(( 10#$(date -u +%H) * 60 + 10#$(date -u +%M) ))          # minutes since 00:00 UTC
+            if [ "$m" -lt 270 ] || [ "$m" -gt 780 ]; then                 # outside 04:30-13:00 UTC = 10:00-18:30 IST
+              echo "late backup run outside 10:00-18:30 IST, skipping"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
             since=$(date -u -d '-100 min' +%Y-%m-%dT%H:%M:%SZ)
             n=$(gh api "repos/${{ github.repository }}/actions/workflows/refresh.yml/runs?created=>$since&per_page=20" \
                  --jq '[.workflow_runs[] | select(.id != ${{ github.run_id }} and .event != "schedule" and .conclusion != "failure" and .conclusion != "cancelled")] | length')
