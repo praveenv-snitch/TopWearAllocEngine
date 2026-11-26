@@ -105,6 +105,10 @@ def main():
     clus_ok = stores["CLUSTER"].fillna("").astype(str).str.strip().str.upper().replace({"NONE": "", "NAN": "", "UNMAPPED": ""}) != ""
     dropped = stores.loc[~(base_ok & clus_ok), "STORE_NAME"].drop_duplicates().tolist()
     stores = stores[base_ok & clus_ok].reset_index(drop=True)
+    # one spelling per cluster: sources mix "HARYANA" / "Haryana" -> merge case-insensitively, keep the most common spelling
+    key = stores["CLUSTER"].astype(str).str.strip()
+    canon = key.groupby(key.str.upper()).agg(lambda v: v.value_counts().index[0])
+    stores["CLUSTER"] = key.str.upper().map(canon)
     print("  stores left out (no base stock / unmapped cluster): %d %s" % (len(dropped), dropped[:8]))
     print("products %d | store-sku %d | stores %d" % (len(prods), len(store_sku), stores["BC"].nunique()))
 
