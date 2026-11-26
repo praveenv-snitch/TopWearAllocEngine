@@ -17,7 +17,7 @@ import pytz
 
 from engine import config as C, demand, embeddings, health, similarity
 
-DATASETS = ["products", "store_sku", "stores", "ideal_mix", "size_sales", "b2b", "fresh_pool", "pp_codes"]
+DATASETS = ["products", "store_sku", "stores", "ideal_mix", "size_sales", "b2b", "fresh_pool", "pp_codes", "fac_stock"]
 TEMPLATE = Path(__file__).resolve().parent.parent / "web" / "template.html"
 IMG_PREFIX = "https://cdn.shopify.com/s/files/1/0420/7073/7058/files/"
 
@@ -77,6 +77,14 @@ def prepare_products(p):
     p["MIX_KEY"] = [C.mix_key(c, co, de, st) for c, co, de, st in zip(p["CATEGORY"], p["COLLAR_NEW"], p["DESIGNS"], p["STYLE"])]
     p["COLOUR"] = p["COLOR"].map(health.colour_name)
     p["PRICE_BAND"] = p["MRP"].map(lambda m: C.price_band(float(m or 0)))
+    # ASP = 90-day offline revenue / units; no offline sale in 90 days -> current selling price, else MRP
+    rev = pd.to_numeric(p.get("OFFLINE_REV90", 0), errors="coerce").fillna(0)
+    u90 = pd.to_numeric(p["OFFLINE_L90"], errors="coerce").fillna(0)
+    sp = pd.to_numeric(p["SELLING_PRICE"], errors="coerce").fillna(0)
+    mrp = pd.to_numeric(p["MRP"], errors="coerce").fillna(0)
+    p["ASP"] = np.where((u90 > 0) & (rev > 0), rev / u90.where(u90 > 0, 1), np.where(sp > 0, sp, mrp))
+    p["ASP_BAND"] = p["ASP"].map(lambda m: C.price_band(float(m or 0)))
+    p["SLEEVE"] = p["SLEEVE_TYPE"].map(lambda v: C.txt(v).strip().title() or "Unknown").replace({"None": "Unknown", "Nan": "Unknown"})
     today = pd.Timestamp.today().normalize()
     first = pd.to_datetime(p["FIRST_OFFLINE_SALE"], errors="coerce")
     p["AGE_TAG"] = np.where(p["OFFLINE_UNITS"] <= 0, 0,
@@ -177,7 +185,7 @@ def main():
             _d(r.FIRST_OFFLINE_SALE), proj_row.get(r.SKU, -1), len(sent.get(r.SKU, ())),
             w(r.CLOSURE), w(r.POCKET), w(r.SKU_CLASS),
             _i(r.OFFLINE_L30), _i(r.OFFLINE_L90), int(r.IS_NRC), _i(r.CUT_STORES), _i(r.WH_SIZE_SETS),
-            _i(r.PP_DEPTH), _i(r.PP_N), _i(r.PP_S)])
+            _i(r.PP_DEPTH), _i(r.PP_N), _i(r.PP_S), _i(r.ASP), w(r.ASP_BAND), w(r.SLEEVE)])     # 45 ASP, 46 ASP band, 47 sleeve
 
     NB_W = C.SIM["top_k"]
 
@@ -256,6 +264,17 @@ def main():
     rep = np.array([[st_idx[int(b)], ki[s_]] for b, s_ in zip(zr["BC"], zr["SKU"])], np.uint16).reshape(-1, 2)
     repeat_b64 = base64.b64encode(rep.tobytes()).decode()
 
+    # facility stock: South has two warehouses (SAPL-WH1 / SAPL-WH2). facStock[k] = {facility: [10 sizes]}; codes on hand
+    # in a facility other than the zone default (North SAPL-NORTH-TAURU, South SAPL-WH2) are listed in ppFac.
+    fac_stock = {}
+    for r in d.get("fac_stock", pd.DataFrame(columns=["SKU"])).itertuples():
+        k, slot = ki.get(r.SKU), health.SZ_SLOT.get(str(r.SZ))
+        if k is None or slot is None or not str(r.FACILITY).startswith("SAPL-WH"):
+            continue
+        fac_stock.setdefault(str(k), {}).setdefault(r.FACILITY, [0] * 10)[slot] += _i(r.UNITS)
+    pp_fac = {r.CODE: r.FACILITY for r in d.get("pp_codes", pd.DataFrame(columns=["CODE"])).itertuples()
+              if getattr(r, "FACILITY", None) and r.FACILITY not in ("SAPL-NORTH-TAURU", "SAPL-WH2")}
+
     store_out, health_out = [], []
     for i, r in store_rows.iterrows():
         store_out.append([int(r.BC), _s(r.STORE_NAME), _s(r.STORE_TYPE), _s(r.STATE), _s(r.CITY),
@@ -276,7 +295,7 @@ def main():
         "newDays": C.NEW_SKU_DAYS, "nudgeDays": C.NUDGE_DAYS, "freshDays": C.FRESH_DAYS,
         "words": list(words), "stores": store_out, "health": health_out, "skus": skus, "nb": nb_out, "nbVis": nb_vis, "nbMeta": nb_meta, "nbW": NB_W,
         "packs": C.PACKS, "pool": {str(k): v for k, v in pool.items()}, "ppCodes": {str(k): v for k, v in used.items()},
-        "fresh": C.FRESH_RUN, "repeat": repeat_b64, "calibPct": C.SIM["calibration_percentile"], "stock": stock_b64, "stockW": 19,
+        "fresh": C.FRESH_RUN, "repeat": repeat_b64, "facStock": fac_stock, "ppFac": pp_fac, "calibPct": C.SIM["calibration_percentile"], "stock": stock_b64, "stockW": 19,
         "nStores": len(st_bc),
         "proj": base64.b64encode(demand.pack_uint8(proj)).decode(),
         "evid": base64.b64encode(ev_packed.tobytes()).decode(), "evidW": int(ev_packed.shape[1]),
