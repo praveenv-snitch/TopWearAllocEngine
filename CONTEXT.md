@@ -67,3 +67,15 @@ A daily-refreshed dashboard for Shirts + T-shirts offline allocation. Similar SK
   - Store detail shows only for exactly one store, with a category toggle and a meta benchmark toggle (Ideal / Sales share). Deviation and ideal options per meta combination sit in a collapsed section.
   - Mini-tables have headers. Price and age filters recompute the health table, and there is a Reset button.
   - Nudges get status chips with a legend, a category toggle, and cascading alert filters; clicking an alert opens store health.
+
+## v4
+- **Sales shares:** every sales-share benchmark (metafield, colour, price band, sleeve, size curve) is weighted 50% L30 + 30% L15 + 20% L7 (`health.wshare`).
+- **Price basis toggle (Store Health):** MRP or ASP, where ASP = 90-day offline revenue ÷ units, falling back to selling price. It drives the bands, the price filter and the allocation price gap.
+- **New gap weights:** sleeve gap, size gap closed and cluster sellability. Cluster sellability = the cluster's average projected ROS per store ÷ the best cluster's, so a cluster doesn't rank higher just for having more stores. The 12 fresh weights add up to 1. New columns after Price gap.
+- **Fresh run:**
+  - "Exhaust stock" sends the remaining WH stock after the budget pass.
+  - Two held-back cases, each with Force: no category delta (`noCatDelta`), and category delta but no fresh room (`noRoom`, force = send the delta only).
+  - One-store search.
+- **SKU tab search:** a full SKU opens similarity; a style code opens the colour-family grid (select / add all); a prepack code opens its SKU, and the pack can go into the basket, where its code is used first.
+- **Insights:** best-selling clusters = L30 units per store carrying a similar SKU, with units per cluster store shown alongside.
+- **Schedule:** every 2 hours 10:00-18:00 IST (cron `30 4-12/2 * * *` UTC, 5 runs a day). The 10:00 run comes before AV_MASTER_HTMBASE (~10:15 IST) and SKU_LIVE_MECH_V2 (~11:40 IST) refresh, so new inwards show from the 12:00 run. GitHub backup runs outside 10:00-18:30 IST skip themselves.
