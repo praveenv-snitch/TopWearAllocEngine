@@ -185,20 +185,26 @@ console.log('  cluster / size / sleeve:', JSON.stringify(cl2));
 ok(Math.abs(ev("Object.entries(D.weights).filter(([k])=>k!=='replen_need').reduce((s,[,v])=>s+v,0)")-1)<1e-6, 'weights do not add up to 1');
 
 // MRP / ASP toggle
-tabGo = null; ev(`tabGo('health')`); const pb = d.querySelector('[data-r="pbasis"] input[value="asp"]'); pb.checked = true; pb.dispatchEvent(new w.Event('change'));
+ev(`tabGo('health');DSI=0;refresh2()`); const t0b = txt(d.querySelector('#storeDetail')); const pb = d.querySelector('#storeDetail [data-r="pbasis"] input[value="asp"]'); pb.checked = true; pb.dispatchEvent(new w.Event('change'));
+ok(txt(d.querySelector('#storeDetail')).includes('Price band (ASP)') && t0b.includes('Price band (MRP)'), 'price toggle on the graph');
+ok(!!d.querySelector('#storeDetail .chartlegend') && !txt(d.querySelector('#storeDetail')).includes('bar = actual stock share'), 'chart legend at top');
 const asp = JSON.parse(ev(`JSON.stringify({basis:PBASIS,aspHigher:K.filter(k=>k[45]>k[13]*1.02&&k[13]>0).length,aspSet:K.filter(k=>k[45]>0).length,n:K.length,
  diffBand:K.filter(k=>k[46]!==k[28]).length})`));
 console.log('  ASP toggle:', JSON.stringify(asp)); ok(asp.basis === 'asp' && asp.aspSet > asp.n * 0.9, 'ASP basis');
-const pb2 = d.querySelector('[data-r="pbasis"] input[value="mrp"]'); pb2.checked = true; pb2.dispatchEvent(new w.Event('change'));
+const pb2 = d.querySelector('#storeDetail [data-r="pbasis"] input[value="mrp"]'); pb2.checked = true; pb2.dispatchEvent(new w.Event('change')); ev('DSI=null;refresh2()');
 
 // search: style -> family grid; select -> add; prepack code -> SKU with pack banner; pinned code goes first
 const fam = ev(`[...FAM.entries()].find(([f,ks])=>ks.length>=3)[0]`);
 $('skuIn').value = fam; $('skuGo').click();
-const fg = JSON.parse(ev(`JSON.stringify({cards:document.querySelectorAll('#simOut .sc').length,chk:document.querySelectorAll('.famChk').length,title:document.querySelector('#simOut h2').textContent})`));
-console.log('  family search', fam, JSON.stringify(fg)); ok(fg.cards >= 3 && fg.chk === fg.cards, 'family grid');
-ev(`BASKET=[];LS.set('tw_basket',[])`); const c0 = d.querySelectorAll('.famChk'); c0[0].checked = true; c0[1].checked = true; c0[0].dispatchEvent(new w.Event('change'));
-$('famAddSel').click(); ok(ev('BASKET.length') === 2, 'add selected colours'); $('famAddAll').click(); ok(ev('BASKET.length') === fg.cards, 'add all colours');
-d.querySelector('#simOut .sc').click(); ok(ev('CUR') !== null && !!d.querySelector('#simGrid'), 'family card opens similarity');
+const fg = JSON.parse(ev(`JSON.stringify({cards:document.querySelectorAll('#simOut .sc[data-k]').length,chk:document.querySelectorAll('.famChk').length,title:document.querySelector('#simOut h2').textContent,
+ colours:!![...document.querySelectorAll('#simOut .kpi span')].find(x=>x.textContent.startsWith('colours')),famBtn:!!document.getElementById('addFam'),place:!!document.getElementById('pSum'),ins:!!document.querySelector('#insights .card')})`));
+console.log('  family search', fam, JSON.stringify(fg)); ok(fg.cards >= 3 && fg.chk === fg.cards && fg.colours && fg.famBtn && fg.place && fg.ins, 'style page layout');
+ev(`BASKET=[];LS.set('tw_basket',[]);search('${fam}')`); const c0 = d.querySelectorAll('.famChk'); c0[0].checked = true; c0[1].checked = true; c0[0].dispatchEvent(new w.Event('change'));
+ok($('famAddSel').textContent.includes('(2)'), 'selected count label'); $('famAddSel').click(); ok(ev('BASKET.length') === 2, 'add selected colours');
+ok(!d.getElementById('famMsg'), 'old "Added ..." line still shown');
+$('addFam').click(); ok(ev('BASKET.length') === fg.cards, 'add family'); ok(!!d.getElementById('pTbl'), 'where to allocate below family');
+d.querySelector('#simOut .sc[data-k]').click(); ok(ev('CUR') !== null && !!d.querySelector('#simGrid'), 'family card opens similarity');
+$('skuBack').click(); ok(ev('FAMV') === fam, 'back to style page');
 const ppc = ev(`(()=>{for(const k in PPC){const v=PPC[k][String(K[k][42])];if(v&&(v[0].length||v[1].length))return v[0][1]||v[1][1]||v[0][0]||v[1][0]}})()`);
 ev(`BASKET=[];LS.set('tw_basket',[])`); $('skuIn').value = ppc; $('skuGo').click();
 console.log('  prepack search', ppc, '->', ev('K[CUR][0]'), '|', txt(d.querySelector('#simOut .card')).slice(0, 120));
@@ -211,6 +217,15 @@ ev(`BASKET=[];LS.set('tw_basket',[])`);
 // one-store picker search
 ev(`tabGo('alloc');R.scope='store';runUI()`); $('rStore').value = ev('S[3][1]'); $('rStore').dispatchEvent(new w.Event('input'));
 ok(ev('R.store') === '3', 'store search picker'); ev(`R.scope='filtered';runUI()`);
+
+// cluster names merged, shrunk priority
+const cq = JSON.parse(ev(`(()=>{const up=new Map();S.forEach(s=>{const u=s[6].toUpperCase();up.set(u,(up.get(u)||new Set()).add(s[6]))});
+ const dup=[...up.values()].filter(x=>x.size>1).length;let small=0,tot=0;
+ for(let k=0;k<K.length&&tot<300;k++){if(K[k][32]<0)continue;tot++;const o=clusterRank(k).order;if(o[0]&&o[0][2]===1)small++}
+ return JSON.stringify({dupClusterSpellings:dup,skusChecked:tot,topIs1StoreCluster:small})})()`));
+console.log('  cluster QC:', JSON.stringify(cq)); ok(cq.dupClusterSpellings === 0, 'duplicate cluster spellings');
+ok(d.querySelectorAll('#allocTbl th').length && [...d.querySelectorAll('#allocTbl th')].map(x=>x.textContent).join('|').includes('Colour|Meta'), 'Meta column');
+ok(!!d.querySelector('#allocTbl .skuhov'), 'SKU hover hook');
 
 // --- TAB 3
 const nh = txt($('nudgeOut'));
