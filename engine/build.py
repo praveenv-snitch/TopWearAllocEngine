@@ -22,6 +22,43 @@ TEMPLATE = Path(__file__).resolve().parent.parent / "web" / "template.html"
 IMG_PREFIX = "https://cdn.shopify.com/s/files/1/0420/7073/7058/files/"
 
 
+# POC display names: the outlet stores' POC is shown as OUTLET (caps), not the person's name
+POC_RENAME = {"SRUSHTI": "OUTLET"}
+
+
+def _poc(v):
+    return POC_RENAME.get((v or "").strip().upper(), v) or "Unknown"
+
+
+ASSETS = TEMPLATE.parent / "assets"
+# browser-tab icon used when web/assets/favicon.png is missing (t-shirt outline)
+FAVICON_FALLBACK = ("data:image/svg+xml," + "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M22 6l-16 9 7 12 6-3v34h26V24l6 3 7-12-16-9c-1 5-5 8-10 8s-9-3-10-8z' fill='%23111827'/%3E%3C/svg%3E")
+
+
+def _data_uri(path):
+    import base64
+    mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon"}[path.suffix.lower()]
+    return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode()
+
+
+def _asset(stem):
+    for ext in (".png", ".svg", ".jpg", ".jpeg", ".ico"):
+        if (ASSETS / (stem + ext)).exists():
+            return ASSETS / (stem + ext)
+    return None
+
+
+def _brand(html):
+    """Embed web/assets/favicon.* as the tab icon and web/assets/snitch_logo.* as the header logo (fallbacks if absent)."""
+    fav = _asset("favicon")
+    html = html.replace("__FAVICON__", _data_uri(fav) if fav else FAVICON_FALLBACK, 1)
+    logo = _asset("snitch_logo")
+    if logo:
+        i, j = html.index("<!--LOGO-->"), html.index("<!--/LOGO-->") + len("<!--/LOGO-->")
+        html = html[:i] + f'<span class="logo" title="Snitch"><img src="{_data_uri(logo)}" alt="SNITCH"></span>' + html[j:]
+    return html
+
+
 def _s(v):
     return "" if v is None or (isinstance(v, float) and np.isnan(v)) or str(v) in ("None", "nan", "NaT") else str(v)
 
@@ -287,7 +324,7 @@ def main():
                           # 12 store base (delta), 13 store inventory, 14 net after JIT, 15 net after IST (all categories)
                           _i(r.S_BASE) or _i(r.BASE_STOCK), _i(r.S_INV), _i(r.S_NET_JIT), _i(r.S_NET_IST),
                           1 if r.S_NET_IST == r.S_NET_IST and r.S_NET_IST is not None else 0,
-                          _s(getattr(r, "POC", "")) or "Unknown"])        # 17 cluster POC (STORE_CATEGORY_DELTA)
+                          _poc(_s(getattr(r, "POC", "")))])        # 17 cluster POC (STORE_CATEGORY_DELTA)
         health_out.append([hl.get((int(r.BC), c)) for c in cats])
 
     payload = {
@@ -306,6 +343,7 @@ def main():
     }
     data_json = json.dumps(payload, separators=(",", ":"), default=lambda o: o.item() if hasattr(o, "item") else str(o))
     html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", data_json.replace("</", "<\\/"))
+    html = _brand(html)
     with open(C.OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write(html)
     print("Built %s (%.1f MB) in %.0fs" % (C.OUTPUT_FILE, len(html) / 1e6, time.time() - t0))
