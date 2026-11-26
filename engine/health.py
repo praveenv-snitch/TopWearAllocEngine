@@ -7,6 +7,8 @@ Benchmarks
   price mix      the store's own 90-day sales share by MRP band
   size curve     the store's 90-day category size sales share
 "Actual" is always the share of current store stock (on hand + JIT).
+Every sales share is weighted: 50% last-30-day share + 30% last-15-day + 20% last-7-day (wshare).
+Price bands exist twice: on MRP ("band") and on ASP = 90-day offline revenue / units ("bandAsp").
 
 Net stock (STORE_CATEGORY_DELTA, size_category_meta_delta_offline):
   after JIT = inventory + JIT - ROS7d x lead time - outward
@@ -49,6 +51,22 @@ def _f(v):
         return 0.0
 
 
+SALES_W = (("L30", 0.5), ("L15", 0.3), ("L7", 0.2))     # weighted sales share: 50% L30, 30% L15, 20% L7
+
+
+def wshare(g, key):
+    """Weighted sales share of `key` in rows g: 0.5 x L30 share + 0.3 x L15 share + 0.2 x L7 share.
+    A window with no sales is dropped and the other weights are rescaled."""
+    out, wt = {}, 0.0
+    for col, w in SALES_W:
+        sh = _share(g.groupby(key)[col].sum().to_dict()) if len(g) else {}
+        if sh:
+            wt += w
+            for k, v in sh.items():
+                out[k] = out.get(k, 0.0) + w * v
+    return {k: v / wt for k, v in out.items()} if wt else {}
+
+
 def _share(d):
     t = sum(d.values())
     return {k: v / t for k, v in d.items()} if t > 0 else {}
@@ -58,12 +76,16 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
     prod = products.set_index("SKU")
     p_cat, p_mix = prod["CATEGORY"].to_dict(), prod["MIX_KEY"].to_dict()
     p_col, p_band = prod["COLOUR"].to_dict(), prod["PRICE_BAND"].to_dict()
+    p_aband, p_slv = prod["ASP_BAND"].to_dict(), prod["SLEEVE"].to_dict()
 
     ss = store_sku.copy()
     ss["CAT"] = ss["SKU"].map(p_cat)
     ss = ss[ss["CAT"].notna()]
     ss["STOCK"] = ss["INV"] + ss["JIT"]
     ss["MIX"], ss["COL"], ss["BAND"] = ss["SKU"].map(p_mix), ss["SKU"].map(p_col), ss["SKU"].map(p_band)
+    ss["ABAND"], ss["SLV"] = ss["SKU"].map(p_aband), ss["SKU"].map(p_slv)
+    for col in ("L7", "L15", "L30"):
+        ss[col] = pd.to_numeric(ss[col], errors="coerce").fillna(0)
     stocked = ss[ss["STOCK"] > 0]
 
     # colour palette per category = top colours by stock+sales; the rest -> "Other"
@@ -76,18 +98,27 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
 
     st_cluster = stores.drop_duplicates("BC").set_index("BC")["CLUSTER"].to_dict()
     ss["CLUSTER"] = ss["BC"].map(st_cluster)
-    clus_col = {(k[0], k[1]): _share(g.groupby("COLB")["L90"].sum().to_dict())
-                for k, g in ss.groupby(["CLUSTER", "CAT"])}
+    clus_col = {(k[0], k[1]): wshare(g, "COLB") for k, g in ss.groupby(["CLUSTER", "CAT"])}
 
     ideal = {}
     for r in ideal_mix.itertuples():
         ideal.setdefault((int(r.BC), r.CATEGORY), {})[r.MIX_KEY] = float(r.IDEAL_MIX or 0)
 
-    size_sale = {}
+    size_sale = {}              # weighted size sales share per store x category (50/30/20 over L30 / L15 / L7)
+    raw = {}
     for r in size_sales.itertuples():
         slot = SZ_SLOT.get(str(r.SZ).upper())
         if slot is not None and r.BC == r.BC:
-            size_sale.setdefault((int(r.BC), r.CATEGORY), np.zeros(10))[slot] += r.QTY
+            a = raw.setdefault((int(r.BC), r.CATEGORY), np.zeros((3, 10)))
+            for j, col in enumerate(("Q30", "Q15", "Q7")):
+                a[j, slot] += _f(getattr(r, col))
+    for key, a in raw.items():
+        v, wt = np.zeros(10), 0.0
+        for j, (_, w) in enumerate(SALES_W):
+            if a[j].sum() > 0:
+                v += w * a[j] / a[j].sum()
+                wt += w
+        size_sale[key] = v / wt if wt else v
 
     today = pd.Timestamp.today()
     month_frac = (today.day - 1) / calendar.monthrange(today.year, today.month)[1]
@@ -107,12 +138,14 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
         str_den = float(sg["STR_DEN"].sum())
         mix_a = _share(g.groupby("MIX")["STOCK"].sum().to_dict())
         mix_i = ideal.get(key, {})
-        mix_s = _share(sg.groupby("MIX")["L90"].sum().to_dict())
+        mix_s = wshare(sg, "MIX")
         mix_o = g.groupby("MIX")["SKU"].nunique().to_dict()
         col_a = _share(g.groupby("COLB")["STOCK"].sum().to_dict())
         col_b = clus_col.get((st_cluster.get(int(r.BC)), r.CATEGORY), {})
         band_a = _share(g.groupby("BAND")["STOCK"].sum().to_dict())
-        band_s = _share(sg.groupby("BAND")["L90"].sum().to_dict())
+        band_s = wshare(sg, "BAND")
+        aband_a, aband_s = _share(g.groupby("ABAND")["STOCK"].sum().to_dict()), wshare(sg, "ABAND")
+        slv_a, slv_s = _share(g.groupby("SLV")["STOCK"].sum().to_dict()), wshare(sg, "SLV")
         sz_inv = np.sum([_arr(v) for v in g["SZ"]], axis=0) if len(g) else np.zeros(10)
         sz_sale = size_sale.get(key, np.zeros(10))
         tgt = _f(r.TARGET_MTD) or _f(r.TARGET_MONTH) * month_frac
@@ -136,7 +169,7 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
             "aged": round(float(g.loc[g["AGE_DAYS"] > 120, "STOCK"].sum()) / stock, 3) if stock else 0,
             "noSale": int(((g["L30"] == 0) & (g["AGE_DAYS"] > 30)).sum()),
             "rev90": round(float(sg["REV90"].sum())),
-            # mix: [ideal share, stock share, 90d sales share]; mixOpt: [ideal options, options carried]
+            # mix: [ideal share, stock share, weighted sales share]; mixOpt: [ideal options, options carried]
             "mix": {k: [round(mix_i.get(k, 0), 3), round(mix_a.get(k, 0), 3), round(mix_s.get(k, 0), 3)]
                     for k in set(mix_i) | set(mix_a) | set(mix_s)},
             "mixOpt": {k: [round(base * mix_i.get(k, 0) / depth, 1), int(mix_o.get(k, 0))] for k in set(mix_i) | set(mix_o)},
@@ -153,6 +186,8 @@ def build(stores, store_sku, products, ideal_mix, size_sales):
             "catTargetW": round(_f(getattr(r, "CAT_TARGET_WEIGHT", 0)), 1),
             "col": {k: [round(col_b.get(k, 0), 3), round(col_a.get(k, 0), 3)] for k in set(col_b) | set(col_a)},
             "band": {k: [round(band_s.get(k, 0), 3), round(band_a.get(k, 0), 3)] for k in set(band_s) | set(band_a)},
+            "bandAsp": {k: [round(aband_s.get(k, 0), 3), round(aband_a.get(k, 0), 3)] for k in set(aband_s) | set(aband_a)},
+            "sleeve": {k: [round(slv_s.get(k, 0), 3), round(slv_a.get(k, 0), 3)] for k in set(slv_s) | set(slv_a)},
             "size": [[round(x / sz_sale.sum(), 3) if sz_sale.sum() else 0 for x in sz_sale],
                      [round(x / sz_inv.sum(), 3) if sz_inv.sum() else 0 for x in sz_inv]],
             "idealCat": round(_f(r.IDEAL_CAT_MIX), 3),
