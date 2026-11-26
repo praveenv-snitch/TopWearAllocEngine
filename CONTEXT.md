@@ -79,3 +79,15 @@ A daily-refreshed dashboard for Shirts + T-shirts offline allocation. Similar SK
 - **SKU tab search:** a full SKU opens similarity; a style code opens the colour-family grid (select / add all); a prepack code opens its SKU, and the pack can go into the basket, where its code is used first.
 - **Insights:** best-selling clusters = L30 units per store carrying a similar SKU, with units per cluster store shown alongside.
 - **Schedule:** every 2 hours 10:00-18:00 IST (cron `30 4-12/2 * * *` UTC, 5 runs a day). The 10:00 run comes before AV_MASTER_HTMBASE (~10:15 IST) and SKU_LIVE_MECH_V2 (~11:40 IST) refresh, so new inwards show from the 12:00 run. GitHub backup runs outside 10:00-18:30 IST skip themselves.
+
+## v5
+- **Cluster names** are merged case-insensitively in `build.py` (the sources mixed "HARYANA" and "Haryana", "PUNJAB" and "Punjab").
+- **Cluster priority** = projected ROS per store over all stores of the cluster, shrunk towards the network average with 3 pseudo-stores (`CLUS_K`). One-store clusters (West Bengal, Odisha, Assam…) often still lead because those stores really do sell the most per store (also on actual similar-SKU sales). The insight table shows actual and projected side by side.
+- **SKU tab:**
+  - NRC and PREPACK badges are stacked on the cards.
+  - Back works for SKU, style and prepack searches (`navTo` / `CURQ`).
+  - A style search opens the SKU-page layout with a family grid, "Add family to allocation" and "Add selected to allocation". With an empty basket, the family is what gets allocated.
+  - SKU pages have a "colours" KPI.
+- **Store Health:** a chart legend at the top, and the MRP/ASP toggle on the price-band graph (it drives the allocation price gaps).
+- **Allocation tables:** a Meta column (and CSV META), and the SKU image appears when you hover over the SKU code.
+- **Fresh run:** cluster scope uses search chips.
