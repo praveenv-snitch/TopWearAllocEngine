@@ -154,11 +154,63 @@ ev(`R.mkind='fill';R.fill=130;runUI()`);
 const fl = JSON.parse(ev(`(()=>{const {per}=budgets(scopeStores());const bad=per.filter(([si,b])=>S[si][16]&&b.total!==Math.max(0,Math.floor(1.3*S[si][12]-S[si][15]))).length;return JSON.stringify({bad,stores:per.filter(x=>sum(x[1].cats)).length})})()`));
 console.log('  manual fill 130%:', JSON.stringify(fl)); ok(fl.bad === 0, 'fill-rate target formula');
 ev(`R.units='auto';R.force=false;runUI()`); $('aRun').click();
-const nd = JSON.parse(ev(`JSON.stringify({held:LASTPER.filter(x=>x[1].noCatDelta).length,servedHeld:LAST.filter(r=>LASTPER.find(x=>x[0]===r.si)[1].noCatDelta).length,alert:!!document.getElementById('aForce')})`));
+const nd = JSON.parse(ev(`JSON.stringify({held:LASTPER.filter(x=>x[1].noCatDelta).length,servedHeld:LAST.filter(r=>LASTPER.find(x=>x[0]===r.si)[1].noCatDelta).length,alert:!!document.getElementById('aAForce')})`));
 console.log('  no-category-delta stores held back:', JSON.stringify(nd)); ok(nd.servedHeld === 0, 'held-back store got units');
-if (nd.held) { ok(nd.alert, 'no alert for held-back stores'); $('aForce').click();
-  const fz2 = JSON.parse(ev(`JSON.stringify({forced:LASTPER.filter(x=>x[1].forced&&sum(x[1].cats)).length,servedForced:new Set(LAST.filter(r=>LASTPER.find(x=>x[0]===r.si)[1].forced).map(r=>r.si)).size,undo:!!document.getElementById('aUnforce')})`));
-  console.log('  after Force allocate:', JSON.stringify(fz2)); ok(fz2.forced > 0 && fz2.undo, 'force allocate'); $('aUnforce').click(); ok(!ev('R.force'), 'undo force'); }
+if (nd.held) { ok(nd.alert, 'no alert for held-back stores'); $('aAForce').click();
+  const fz2 = JSON.parse(ev(`JSON.stringify({forced:LASTPER.filter(x=>x[1].forced&&sum(x[1].cats)).length,servedForced:new Set(LAST.filter(r=>LASTPER.find(x=>x[0]===r.si)[1].forced).map(r=>r.si)).size,undo:!!document.getElementById('aAUndo')})`));
+  console.log('  after Force allocate:', JSON.stringify(fz2)); ok(fz2.forced > 0 && fz2.undo, 'force allocate'); $('aAUndo').click(); ok(!ev('R.force'), 'undo force'); }
+
+// no fresh room but a category delta: held back, force sends the category delta only
+ev(`R.scope='filtered';R.units='auto';R.cat='both';R.force=false;R.forceRoom=false;runUI()`); $('aRun').click();
+const nr = JSON.parse(ev(`JSON.stringify({held:LASTPER.filter(x=>x[1].noRoom).length,got:LAST.filter(r=>LASTPER.find(x=>x[0]===r.si)[1].noRoom).length,alert:!!document.getElementById('aBForce')})`));
+console.log('  delta but no fresh room:', JSON.stringify(nr)); ok(nr.got === 0, 'no-room store got units'); ok(!nr.held || nr.alert, 'no alert for no-room stores');
+if (nr.held) { $('aBForce').click();
+  const fr = JSON.parse(ev(`(()=>{const used={};LAST.forEach(r=>used[r.si*2+K[r.k][1]]=(used[r.si*2+K[r.k][1]]||0)+r.units);let over=0,served=0;
+   for(const [si,b] of LASTPER){if(!b.forcedRoom)continue;for(const c of [0,1]){const h=D.health[si][c],d=h?Math.max(0,h.catBase-h.netIst):0;if((used[si*2+c]||0)>d)over++;if(used[si*2+c])served++}}return JSON.stringify({served,overDelta:over})})()`));
+  console.log('  after force (no room):', JSON.stringify(fr)); ok(fr.overDelta === 0 && fr.served > 0, 'forced no-room stores exceed delta'); $('aBUndo').click(); }
+
+// exhaust stock: extra lines beyond budgets, still within WH stock and pack rules
+$('aRun').click(); const base1 = ev('sum(LAST.map(r=>r.units))');
+$('aExhaust').checked = true; $('aRun').click();
+const ex = JSON.parse(ev(`JSON.stringify({units:sum(LAST.map(r=>r.units)),exLines:LAST.filter(r=>r.exhaust).length,rules:(${RULES})(LAST,true).nViol})`));
+console.log('  exhaust stock: units', base1, '->', JSON.stringify(ex)); ok(ex.units > base1 && ex.exLines > 0 && ex.rules === 0, 'exhaust stock');
+$('aExhaust').checked = false;
+
+// sleeve / size gap / cluster columns and cluster ordering
+ok([...d.querySelectorAll('#allocTbl th')].map(x => x.textContent).join('|').includes('Price gap|Sleeve gap|Size gap closed|Cluster sell.'), 'new gap columns after price gap');
+const cl2 = JSON.parse(ev(`(()=>{$=0;const by={};for(const r of LAST){(by[r.f.clus>=.999?'top':'rest']=by[r.f.clus>=.999?'top':'rest']||[]).push(r.s)}
+ const avg=a=>a&&a.length?sum(a)/a.length:0;return JSON.stringify({topClusterLines:(by.top||[]).length,avgScoreTop:+avg(by.top).toFixed(3),avgScoreRest:+avg(by.rest).toFixed(3),
+ sizeGapAvg:+avg(LAST.map(r=>r.comp.size_gap)).toFixed(2),slvGapAvg:+avg(LAST.map(r=>r.f.slvGap)).toFixed(3)})})()`));
+console.log('  cluster / size / sleeve:', JSON.stringify(cl2));
+ok(Math.abs(ev("Object.entries(D.weights).filter(([k])=>k!=='replen_need').reduce((s,[,v])=>s+v,0)")-1)<1e-6, 'weights do not add up to 1');
+
+// MRP / ASP toggle
+tabGo = null; ev(`tabGo('health')`); const pb = d.querySelector('[data-r="pbasis"] input[value="asp"]'); pb.checked = true; pb.dispatchEvent(new w.Event('change'));
+const asp = JSON.parse(ev(`JSON.stringify({basis:PBASIS,aspHigher:K.filter(k=>k[45]>k[13]*1.02&&k[13]>0).length,aspSet:K.filter(k=>k[45]>0).length,n:K.length,
+ diffBand:K.filter(k=>k[46]!==k[28]).length})`));
+console.log('  ASP toggle:', JSON.stringify(asp)); ok(asp.basis === 'asp' && asp.aspSet > asp.n * 0.9, 'ASP basis');
+const pb2 = d.querySelector('[data-r="pbasis"] input[value="mrp"]'); pb2.checked = true; pb2.dispatchEvent(new w.Event('change'));
+
+// search: style -> family grid; select -> add; prepack code -> SKU with pack banner; pinned code goes first
+const fam = ev(`[...FAM.entries()].find(([f,ks])=>ks.length>=3)[0]`);
+$('skuIn').value = fam; $('skuGo').click();
+const fg = JSON.parse(ev(`JSON.stringify({cards:document.querySelectorAll('#simOut .sc').length,chk:document.querySelectorAll('.famChk').length,title:document.querySelector('#simOut h2').textContent})`));
+console.log('  family search', fam, JSON.stringify(fg)); ok(fg.cards >= 3 && fg.chk === fg.cards, 'family grid');
+ev(`BASKET=[];LS.set('tw_basket',[])`); const c0 = d.querySelectorAll('.famChk'); c0[0].checked = true; c0[1].checked = true; c0[0].dispatchEvent(new w.Event('change'));
+$('famAddSel').click(); ok(ev('BASKET.length') === 2, 'add selected colours'); $('famAddAll').click(); ok(ev('BASKET.length') === fg.cards, 'add all colours');
+d.querySelector('#simOut .sc').click(); ok(ev('CUR') !== null && !!d.querySelector('#simGrid'), 'family card opens similarity');
+const ppc = ev(`(()=>{for(const k in PPC){const v=PPC[k][String(K[k][42])];if(v&&(v[0].length||v[1].length))return v[0][1]||v[1][1]||v[0][0]||v[1][0]}})()`);
+ev(`BASKET=[];LS.set('tw_basket',[])`); $('skuIn').value = ppc; $('skuGo').click();
+console.log('  prepack search', ppc, '->', ev('K[CUR][0]'), '|', txt(d.querySelector('#simOut .card')).slice(0, 120));
+ok(ev('K[CUR][0]') === ev(`ppSku('${ppc}')`) && txt(d.querySelector('#simOut .card')).includes('Prepack'), 'prepack search');
+const addB = [...d.querySelectorAll('#simOut .card button')].find(b => b.textContent.includes('Add this prepack')); if (addB) addB.click();
+ok(ev(`BASKET.includes('${ppc}')`), 'prepack added to basket');
+const pinUse = ev(`(()=>{const k=CUR,out=allocate([k],[...Array(NS).keys()],'auto',cfgNow(),weights(),{pin:{[k]:['${ppc}']}});const pl=out.filter(r=>r.packType==='PREPACK');return pl.length?pl[0].codes.includes('${ppc}')||pl.some(r=>r.codes.includes('${ppc}')):'no prepack line'})()`);
+console.log('  pinned prepack code used:', pinUse); ok(pinUse === true || pinUse === 'no prepack line', 'pinned code not used');
+ev(`BASKET=[];LS.set('tw_basket',[])`);
+// one-store picker search
+ev(`tabGo('alloc');R.scope='store';runUI()`); $('rStore').value = ev('S[3][1]'); $('rStore').dispatchEvent(new w.Event('input'));
+ok(ev('R.store') === '3', 'store search picker'); ev(`R.scope='filtered';runUI()`);
 
 // --- TAB 3
 const nh = txt($('nudgeOut'));
