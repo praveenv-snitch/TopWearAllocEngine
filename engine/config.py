@@ -173,9 +173,10 @@ DEMAND = {"recency_half_life_days": 365,     # ~1-year half-life (settings.yaml 
           "prior_weight": 3.0,               # shrinkage towards the neighbours' overall index (backtest-tuned)
           "own_weight": 3.0}                 # weight of an old SKU's own store ROS (at >= 30 days live)
 DOI_CAP_STATES = {"KARNATAKA", "DELHI", "HARYANA"}  # WH states: 60 days cap, else 90 (as longtail SQL)
-ALLOC_DEFAULT_WEIGHTS = {"ros": 0.30, "str": 0.15, "mix_gap": 0.15, "option_gap": 0.10,
-                         "fill_gap": 0.10, "fresh_need": 0.05, "target_gap": 0.05, "colour_gap": 0.05,
-                         "price_gap": 0.05, "replen_need": 0.10}   # replen_need only scores REPLEN lines (SKU tab)
+ALLOC_DEFAULT_WEIGHTS = {"ros": 0.22, "str": 0.10, "mix_gap": 0.11, "option_gap": 0.08, "fill_gap": 0.08,
+                         "fresh_need": 0.04, "target_gap": 0.04, "colour_gap": 0.04, "price_gap": 0.04,
+                         "sleeve_gap": 0.05, "size_gap": 0.05, "cluster": 0.15,   # these 12 add up to 1
+                         "replen_need": 0.10}   # replen_need only scores REPLEN lines (SKU tab)
 # Size packs (units per size in the order of SIZES). Prepack ratios = prepack_ratio in store_replen_prepack*.sql.
 PACKS = {
     "fresh_set": [1, 2, 3, 3, 2, 1, 0, 0, 0, 0],     # fresh loose: one 12-unit size set XS1 S2 M3 L3 XL2 XXL1
