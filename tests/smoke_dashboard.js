@@ -169,12 +169,7 @@ if (nr.held) { $('aBForce').click();
    for(const [si,b] of LASTPER){if(!b.forcedRoom)continue;for(const c of [0,1]){const h=D.health[si][c],d=h?Math.max(0,h.catBase-h.netIst):0;if((used[si*2+c]||0)>d)over++;if(used[si*2+c])served++}}return JSON.stringify({served,overDelta:over})})()`));
   console.log('  after force (no room):', JSON.stringify(fr)); ok(fr.overDelta === 0 && fr.served > 0, 'forced no-room stores exceed delta'); $('aBUndo').click(); }
 
-// exhaust stock: extra lines beyond budgets, still within WH stock and pack rules
-$('aRun').click(); const base1 = ev('sum(LAST.map(r=>r.units))');
-$('aExhaust').checked = true; $('aRun').click();
-const ex = JSON.parse(ev(`JSON.stringify({units:sum(LAST.map(r=>r.units)),exLines:LAST.filter(r=>r.exhaust).length,rules:(${RULES})(LAST,true).nViol})`));
-console.log('  exhaust stock: units', base1, '->', JSON.stringify(ex)); ok(ex.units > base1 && ex.exLines > 0 && ex.rules === 0, 'exhaust stock');
-$('aExhaust').checked = false;
+ok(!$('aExhaust'), 'exhaust must not be in fresh run');
 
 // sleeve / size gap / cluster columns and cluster ordering
 ok([...d.querySelectorAll('#allocTbl th')].map(x => x.textContent).join('|').includes('Price gap|Sleeve gap|Size gap closed|Cluster sell.'), 'new gap columns after price gap');
@@ -199,7 +194,7 @@ $('skuIn').value = fam; $('skuGo').click();
 const fg = JSON.parse(ev(`JSON.stringify({cards:document.querySelectorAll('#simOut .sc[data-k]').length,chk:document.querySelectorAll('.famChk').length,title:document.querySelector('#simOut h2').textContent,
  colours:!![...document.querySelectorAll('#simOut .kpi span')].find(x=>x.textContent.startsWith('colours')),famBtn:!!document.getElementById('addFam'),place:!!document.getElementById('pSum'),ins:!!document.querySelector('#insights .card')})`));
 console.log('  family search', fam, JSON.stringify(fg)); ok(fg.cards >= 3 && fg.chk === fg.cards && fg.colours && fg.famBtn && fg.place && fg.ins, 'style page layout');
-ev(`BASKET=[];LS.set('tw_basket',[]);search('${fam}')`); const c0 = d.querySelectorAll('.famChk'); c0[0].checked = true; c0[1].checked = true; c0[0].dispatchEvent(new w.Event('change'));
+ev(`BASKET=[];LS.set('tw_basket',[]);doSearch('${fam}')`); const c0 = d.querySelectorAll('.famChk'); c0[0].checked = true; c0[1].checked = true; c0[0].dispatchEvent(new w.Event('change'));
 ok($('famAddSel').textContent.includes('(2)'), 'selected count label'); $('famAddSel').click(); ok(ev('BASKET.length') === 2, 'add selected colours');
 ok(!d.getElementById('famMsg'), 'old "Added ..." line still shown');
 $('addFam').click(); ok(ev('BASKET.length') === fg.cards, 'add family'); ok(!!d.getElementById('pTbl'), 'where to allocate below family');
@@ -248,5 +243,26 @@ d.querySelector('#alertCard tbody tr.click').click();
 ok(d.querySelectorAll('#storeDetail .kpi').length >= 2 && ev('DSI') >= 0 && $('t-health').classList.contains('on'), 'alert click did not open store health');
 ok(txt($('healthTbl')).includes('MTD'), 'MTD note missing');
 console.log('  alert click -> store detail:', txt(d.querySelector('#storeDetail h2')).slice(0, 60));
+// --- v6: recent chips, exhaust in Where to allocate, mix benchmark drives gaps, POC rename, cluster ranks
+$('t-sim').click();
+const kx = ev(`(()=>{for(let k=0;k<K.length;k++)if(sum(K[k][20])+sum(K[k][21])>200)return k;return 0})()`);
+ev(`BASKET=[];LS.set('tw_basket',[]);doSearch(K[${kx}][0]);doSearch(K[${kx===0?1:0}][0])`);
+const chip = [...d.querySelectorAll('#recent a.chip')].find(a => a.textContent.trim() === ev(`K[${kx}][0]`));
+chip.click(); ok(ev('CUR') === kx, 'recent chip click');
+console.log('  recent chip ->', ev('K[CUR][0]'));
+const pu = () => JSON.parse(ev(`JSON.stringify({u:sum(LAST_P().map(r=>r.units)),x:LAST_P().filter(r=>r.exhaust).length})`));
+ev(`window.LAST_P=()=>{const sts=[...Array(NS).keys()];return allocate([CUR],sts,'auto',cfgNow(),weights(),{exhaust:PEXH})}`);
+const p0 = pu(); $('pExh').checked = true; $('pExh').dispatchEvent(new w.Event('change'));
+const p1 = pu(); console.log('  placement exhaust units', p0.u, '->', p1.u, 'extra lines', p1.x);
+ok(ev('PEXH') === true && p1.u >= p0.u && $('pExh').checked, 'placement exhaust');
+ok(JSON.parse(ev(`JSON.stringify((${RULES})(allocate([CUR],[...Array(NS).keys()],'auto',cfgNow(),weights(),{exhaust:true}),false).nViol)`)) === 0, 'exhaust rules');
+$('pExh').checked = false; $('pExh').dispatchEvent(new w.Event('change'));
+const gIdeal = ev(`(()=>{MBENCH='ideal';const g=gapsOf(newGapState(),0,0,1.1);return JSON.stringify(g.mix)})()`);
+const gSales = ev(`(()=>{MBENCH='sales';const g=gapsOf(newGapState(),0,0,1.1);const h=D.health[0][0];const x=Object.keys(h.mix)[0];const ok=Math.abs(g.mix[x]-((h.mix[x][2]||0)-h.mix[x][1])*h.base)<1e-6;MBENCH='ideal';return JSON.stringify({ok,g:g.mix})})()`);
+ok(gIdeal !== JSON.stringify(JSON.parse(gSales).g) && JSON.parse(gSales).ok, 'mix benchmark drives gap');
+console.log('  mix gap follows benchmark: ok');
+ok(!ev(`S.some(s=>/srushti/i.test(s[17]))`), 'POC rename');
+ev(`showSku(K[${kx}][0])`); ok(!txt($('simOut') || d.body).includes('#undefined'), 'cluster rank undefined');
+console.log('  POCs:', ev(`[...new Set(S.map(s=>s[17]))].join(', ')`));
 console.log('\nerrors:', errs.length, errs.slice(0, 3), '| failed checks:', fails.length ? fails : 'none');
 process.exit(errs.length || fails.length ? 1 : 0);
