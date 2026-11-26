@@ -11,9 +11,10 @@ id = "__KV_NAMESPACE_ID__"
 # Custom domain (optional; zone must be on this Cloudflare account):
 # routes = [{ pattern = "topwear.snitch-offline.com", custom_domain = true }]
 
-# On-time refresh (UTC): 04:30 = 10:00 IST. The Worker starts the GitHub workflow.
+# On-time refresh (UTC): every 2 hours 04:30-12:30 UTC = 10:00, 12:00, 14:00, 16:00, 18:00 IST (5 runs a day).
+# The Worker starts the GitHub workflow (needs the GH_TOKEN Worker secret).
 [triggers]
-crons = ["30 4 * * *"]
+crons = ["30 4-12/2 * * *"]
 
 [vars]
 GH_REPO = "__GH_REPO__"   # filled by the workflow; GH_TOKEN is a Worker secret
