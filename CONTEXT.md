@@ -93,3 +93,23 @@ A daily-refreshed dashboard for Shirts + T-shirts offline allocation. Similar SK
 - **Fresh run:** cluster scope uses search chips.
 - Small-cluster cap: clusters with fewer than CLUS_MIN (3) stores are capped at the median cluster score in clusterRank (marked "capped" in the cluster table).
 - Branding: build embeds web/assets/ (or web/assests/) favicon.* as the tab icon and snitch_logo.* as the header logo; the logo is auto-cropped to the wordmark and scaled to header height.
+
+## Saved allocations, performance, store rules (v7)
+- **Save**: "Save allocation" next to every Download (fresh run, Where to allocate). Name `DD-MM-YY_POC_branchcodes_qty`
+  (POC in caps, MULTI if several; more than 8 stores -> first 8 codes + `+N`). Stored by the Worker in KV as `alloc:<id>`
+  `{meta, cfg, lines, csv}`; `csv` is the exact downloaded file, so a re-download is byte-identical. KV expiry = 35 days.
+- **Worker API** (`worker/src/index.js`, same password as the site): `GET/POST /api/allocs`, `GET/DELETE /api/allocs/<id>`,
+  `GET/POST /api/rules`, `DELETE /api/rules/<id>`. Rules live in the KV key metadata (`rule:<id>`), optional expiry 30 / 90 days.
+- **Build** (`engine/alloc_log.py`): reads KV (Cloudflare API), mirrors into `SNITCH_DB.MAPLEMONK.TW_ALLOC_LOG` /
+  `TW_ALLOC_RULES` (full replace each run, so the 35-day purge follows KV; falls back to an inline list if the CI role
+  cannot create / write tables), runs `engine/sql/alloc_perf.sql` (daily offline sales per saved store x SKU from the
+  allocation date to yesterday IST, same exclusions as the engine) -> `D.perf {asOf, a:{id:[[bc,sku,dayOff,units,rev]]}}`
+  and `D.rules` (fallback when the live API is unreachable). Dev: `TW_ALLOCS_FILE=<json>` and `TW_NO_LOG_TABLES=1`.
+- **Analysis**: projected for the same period = line ROS x days since allocation (capped at stock sent + stock before);
+  KPIs, cumulative actual vs projected chart, by store / SKU / evidence tier, below-projection (14+ days, < 50%) and
+  beating-projection (> 150%) lists. Replen sales include stock the store already had; fresh sell-through is exact.
+- **Remarks -> rules**: per line, a rule type (don't send SKU / design / metafield / colour / sleeve / fit / collar /
+  material / MRP band, send less, note) with free text that pre-selects the type. Rules are per store (+ category);
+  the allocator skips matching lines (`out.ruleSkips`, family colours too) and "send less" halves replen lines
+  (prepacks: half the packs, min 1) and halves the score of fresh lines. Shown in the allocation summaries, the Store
+  Health header chip and the Store rules list. Tests: `tests/smoke_saved.js`.
