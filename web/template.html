@@ -275,8 +275,13 @@ function buildLine(k,si,type,pool,p,cfg){
 // higher rank), shrunk towards the network average: (sum + CLUS_K x network avg) / (stores + CLUS_K). A 1-store cluster
 // can then only lead when that store is far above the network. fac = cluster score / best cluster score.
 const CLUS_K=3;
+let CLUS_MIN=3;   // clusters with fewer stores cannot rank above the median cluster
 function clusterRank(k){const agg=new Map();let tot=0;for(let si=0;si<NS;si++){const c=S[si][6],a=agg.get(c)||[0,0],p=proj(k,si);a[0]+=p;a[1]++;tot+=p;agg.set(c,a)}
- const net=NS?tot/NS:0,avg=[...agg].map(([c,a])=>[c,(a[0]+CLUS_K*net)/(a[1]+CLUS_K),a[1],a[1]?a[0]/a[1]:0]).sort((p,q)=>q[1]-p[1]),best=avg.length?avg[0][1]:0;
+ const net=NS?tot/NS:0,avg=[...agg].map(([c,a])=>[c,(a[0]+CLUS_K*net)/(a[1]+CLUS_K),a[1],a[1]?a[0]/a[1]:0,false]);
+ // small clusters (< CLUS_MIN stores) are capped at the median cluster score: too few stores to prove they lead
+ if(CLUS_MIN>1){const sc=avg.map(x=>x[1]).sort((p,q)=>p-q),med=sc.length?(sc.length%2?sc[sc.length>>1]:(sc[sc.length/2-1]+sc[sc.length/2])/2):0;
+  for(const x of avg)if(x[2]<CLUS_MIN&&x[1]>med){x[1]=med;x[4]=true}}
+ avg.sort((p,q)=>q[1]-p[1]);const best=avg.length?avg[0][1]:0;
  return {order:avg,net,fac:new Map(avg.map(([c,v])=>[c,best>0?v/best:0]))}}
 // Value of a line = expected sell-through + share of each store gap it closes (weights from the Allocation tab).
 function lineValue(f,line,type,g,w,maxStr,k,si){
@@ -600,7 +605,7 @@ function insights(k,items){
   <th class="n" title="Unshrunk projected average">raw</th><th title="Stores by evidence: own history / 3+ similar / 1-2 similar / baseline only">Evidence</th></tr></thead><tbody>${
   [...new Set([...prRows.map(x=>x[0]),...topClus.map(x=>x[0])])].map(c=>{const p=cr.order.find(x=>x[0]===c)||[c,0,0,0],b=byClus[c],e=evc(c);
    return `<tr><td>${esc(c)}</td><td class="n">${p[2]}</td><td class="n">${b&&b.pairs>=3?f1(b.u/b.pairs)+' <span class="mut">#'+actRank.get(c)+'</span>':'<span class="mut">'+(b?f1(b.u/b.pairs)+' (few)':'–')+'</span>'}</td>
-   <td class="n"><b>${f1(p[1]*30)}</b> <span class="mut">#${cr.order.findIndex(x=>x[0]===c)+1}</span></td><td class="n mut">${f1(p[3]*30)}</td><td class="mut">${e[3]} / ${e[2]} / ${e[1]} / ${e[0]}</td></tr>`}).join('')}</tbody></table>`;
+   <td class="n" ${p[4]?`title="Only ${p[2]} store(s): capped at the median cluster score (needs ${CLUS_MIN}+ stores to rank above it)"`:''}><b>${f1(p[1]*30)}</b>${p[4]?' <span class="warn">capped</span>':''} <span class="mut">#${cr.order.findIndex(x=>x[0]===c)+1}</span></td><td class="n mut">${f1(p[3]*30)}</td><td class="mut">${e[3]} / ${e[2]} / ${e[1]} / ${e[0]}</td></tr>`}).join('')}</tbody></table>`;
  const tiers={};items.forEach(x=>tiers[D.tierTag[x.tier]]=(tiers[D.tierTag[x.tier]]||0)+1);
  const priceDelta=mrps.length?a[13]-avg(mrps,x=>x):0;
  return `<div class="card"><h2>Insights (from the ${items.length} similar SKUs above)</h2><div class="kpi">
@@ -615,7 +620,7 @@ function insights(k,items){
   <details style="margin-top:8px"><summary style="cursor:pointer"><b>Clusters</b> — best-selling (actual): ${topClus.map(([c,ps])=>`<span class="chip">${esc(c)} · ${f1(ps)}</span>`).join('')||'<span class="mut">no current offline sales</span>'}
    · allocation priority: ${prRows.slice(0,5).map(([c,v])=>`<span class="chip">${esc(c)} · ${f1(v*30)}</span>`).join('')}</summary>
    <div class="hint" style="margin-top:4px"><b>Why the two lists can differ:</b> "best-selling" is what the similar SKUs actually sold, per store that carried them (history, only stocking stores).
-   "Allocation priority" is what <i>this</i> SKU is projected to sell per store across <i>all</i> stores of the cluster, shrunk towards the network average so a 1–2 store cluster cannot lead on one strong store. Both are per store, so cluster size does not decide.</div>${clusTbl}</details></div>`;
+   "Allocation priority" is what <i>this</i> SKU is projected to sell per store across <i>all</i> stores of the cluster, shrunk towards the network average so a 1–2 store cluster cannot lead on one strong store; clusters with fewer than 3 stores are also capped at the median cluster. Both are per store, so cluster size does not decide.</div>${clusTbl}</details></div>`;
 }
 function explainer(a){
  const cal=D.calib[CATS[a[1]]]||{},bt=D.backtest;
