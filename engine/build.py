@@ -42,10 +42,35 @@ def _data_uri(path):
 
 
 def _asset(stem):
-    for ext in (".png", ".svg", ".jpg", ".jpeg", ".ico"):
-        if (ASSETS / (stem + ext)).exists():
-            return ASSETS / (stem + ext)
+    # web/assets (also accepts the web/assests spelling used in the repo)
+    for d in (ASSETS, TEMPLATE.parent / "assests"):
+        for ext in (".png", ".svg", ".jpg", ".jpeg", ".ico"):
+            if (d / (stem + ext)).exists():
+                return d / (stem + ext)
     return None
+
+
+def _logo_uri(path):
+    """Crop the empty border around the wordmark and scale to header height, so a square logo file is not tiny."""
+    if path.suffix.lower() == ".svg":
+        return _data_uri(path)
+    try:
+        import base64, io
+        from PIL import Image, ImageOps
+        im = Image.open(path).convert("RGB")
+        # bounding box of anything brighter than the background (logo is white on black)
+        box = ImageOps.grayscale(im).point(lambda v: 255 if v > 60 else 0).getbbox()
+        if box:
+            pad = max(4, (box[3] - box[1]) // 6)
+            im = im.crop((max(box[0] - pad, 0), max(box[1] - pad, 0), min(box[2] + pad, im.width), min(box[3] + pad, im.height)))
+        h = 56                                  # 2x the 28px display height, sharp on retina
+        im = im.resize((max(1, round(im.width * h / im.height)), h), Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, "PNG", optimize=True)
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:                      # never fail the build over a logo
+        print(f"  logo crop skipped ({e}); embedding as is")
+        return _data_uri(path)
 
 
 def _brand(html):
@@ -55,7 +80,7 @@ def _brand(html):
     logo = _asset("snitch_logo")
     if logo:
         i, j = html.index("<!--LOGO-->"), html.index("<!--/LOGO-->") + len("<!--/LOGO-->")
-        html = html[:i] + f'<span class="logo" title="Snitch"><img src="{_data_uri(logo)}" alt="SNITCH"></span>' + html[j:]
+        html = html[:i] + f'<span class="logo" title="Snitch"><img src="{_logo_uri(logo)}" alt="SNITCH"></span>' + html[j:]
     return html
 
 
