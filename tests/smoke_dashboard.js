@@ -17,6 +17,7 @@ console.log('load ms', Date.now() - t0, '| load errors', errs.length);
 ok(ev("K.every(k=>!k[0].startsWith('MP'))"), 'MP SKU present');
 ok(ev("S.every(s=>s[9]>0 && s[6] && s[6]!=='UNMAPPED')"), 'store without base stock / cluster present');
 
+ok(ev('MBENCH') === 'sales' && ev('PBASIS') === 'asp', 'defaults: sales-share metafield gaps, ASP price gaps');
 // --- search, recent, back, match modes
 const a = process.argv[3] || ev("K.find(k=>k[32]>=0&&k[18]+k[19]>200&&!k[42])[0]");
 const b = ev(`(()=>{const k=idx['${a}'];return neighbours(k,'def')[0]?K[neighbours(k,'def')[0].k][0]:null})()`);
@@ -180,13 +181,13 @@ console.log('  cluster / size / sleeve:', JSON.stringify(cl2));
 ok(Math.abs(ev("Object.entries(D.weights).filter(([k])=>k!=='replen_need').reduce((s,[,v])=>s+v,0)")-1)<1e-6, 'weights do not add up to 1');
 
 // MRP / ASP toggle
-ev(`tabGo('health');DSI=0;refresh2()`); const t0b = txt(d.querySelector('#storeDetail')); const pb = d.querySelector('#storeDetail [data-r="pbasis"] input[value="asp"]'); pb.checked = true; pb.dispatchEvent(new w.Event('change'));
+ev(`tabGo('health');PBASIS='mrp';DSI=0;refresh2()`); const t0b = txt(d.querySelector('#storeDetail')); const pb = d.querySelector('#storeDetail [data-r="pbasis"] input[value="asp"]'); pb.checked = true; pb.dispatchEvent(new w.Event('change'));
 ok(txt(d.querySelector('#storeDetail')).includes('Price band (ASP)') && t0b.includes('Price band (MRP)'), 'price toggle on the graph');
 ok(!!d.querySelector('#storeDetail .chartlegend') && !txt(d.querySelector('#storeDetail')).includes('bar = actual stock share'), 'chart legend at top');
 const asp = JSON.parse(ev(`JSON.stringify({basis:PBASIS,aspHigher:K.filter(k=>k[45]>k[13]*1.02&&k[13]>0).length,aspSet:K.filter(k=>k[45]>0).length,n:K.length,
  diffBand:K.filter(k=>k[46]!==k[28]).length})`));
 console.log('  ASP toggle:', JSON.stringify(asp)); ok(asp.basis === 'asp' && asp.aspSet > asp.n * 0.9, 'ASP basis');
-const pb2 = d.querySelector('#storeDetail [data-r="pbasis"] input[value="mrp"]'); pb2.checked = true; pb2.dispatchEvent(new w.Event('change')); ev('DSI=null;refresh2()');
+ev(`PBASIS='asp';DSI=null;refresh2()`);   // back to the default
 
 // search: style -> family grid; select -> add; prepack code -> SKU with pack banner; pinned code goes first
 const fam = ev(`[...FAM.entries()].find(([f,ks])=>ks.length>=3)[0]`);
@@ -252,11 +253,17 @@ chip.click(); ok(ev('CUR') === kx, 'recent chip click');
 console.log('  recent chip ->', ev('K[CUR][0]'));
 const pu = () => JSON.parse(ev(`JSON.stringify({u:sum(LAST_P().map(r=>r.units)),x:LAST_P().filter(r=>r.exhaust).length})`));
 ev(`window.LAST_P=()=>{const sts=[...Array(NS).keys()];return allocate([CUR],sts,'auto',cfgNow(),weights(),{exhaust:PEXH})}`);
-const p0 = pu(); $('pExh').checked = true; $('pExh').dispatchEvent(new w.Event('change'));
+ok(ev('PEXH') === '' && $('pExh').value === '', 'default: no exhaust');
+const p0 = pu(); $('pExh').value = 'all'; $('pExh').dispatchEvent(new w.Event('change'));
 const p1 = pu(); console.log('  placement exhaust units', p0.u, '->', p1.u, 'extra lines', p1.x);
-ok(ev('PEXH') === true && p1.u >= p0.u && $('pExh').checked, 'placement exhaust');
+ok(ev('PEXH') === 'all' && p1.u >= p0.u && $('pExh').value === 'all', 'placement exhaust all');
+const ppx = JSON.parse(ev(`(()=>{const ks=[...Array(K.length).keys()].filter(k=>K[k][43]+K[k][44]>2&&sum(K[k][20])+sum(K[k][21])>20).slice(0,15),sts=[...Array(NS).keys()];
+  const o=allocate(ks,sts,'auto',cfgNow(),weights(),{exhaust:'prepacks'}),a=allocate(ks,sts,'auto',cfgNow(),weights(),{exhaust:'all'});
+  return JSON.stringify({pp:o.filter(r=>r.exhaust).length,ppLoose:o.filter(r=>r.exhaust&&r.packType!=='PREPACK').length,all:a.filter(r=>r.exhaust).length})})()`));
+console.log('  exhaust prepacks lines', ppx.pp, '(loose', ppx.ppLoose + ') | exhaust all lines', ppx.all);
+ok(ppx.ppLoose === 0 && ppx.all >= ppx.pp, 'exhaust prepacks = packs only');
 ok(JSON.parse(ev(`JSON.stringify((${RULES})(allocate([CUR],[...Array(NS).keys()],'auto',cfgNow(),weights(),{exhaust:true}),false).nViol)`)) === 0, 'exhaust rules');
-$('pExh').checked = false; $('pExh').dispatchEvent(new w.Event('change'));
+$('pExh').value = ''; $('pExh').dispatchEvent(new w.Event('change'));
 const gIdeal = ev(`(()=>{MBENCH='ideal';const g=gapsOf(newGapState(),0,0,1.1);return JSON.stringify(g.mix)})()`);
 const gSales = ev(`(()=>{MBENCH='sales';const g=gapsOf(newGapState(),0,0,1.1);const h=D.health[0][0];const x=Object.keys(h.mix)[0];const ok=Math.abs(g.mix[x]-((h.mix[x][2]||0)-h.mix[x][1])*h.base)<1e-6;MBENCH='ideal';return JSON.stringify({ok,g:g.mix})})()`);
 ok(gIdeal !== JSON.stringify(JSON.parse(gSales).g) && JSON.parse(gSales).ok, 'mix benchmark drives gap');
