@@ -23,6 +23,9 @@ th{font-size:11px;color:var(--mut);text-transform:uppercase;position:sticky;top:
 td.n,th.n{text-align:right}.scroll{overflow:auto;max-height:560px}
 .kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .kpi div{background:#fafbfc;border:1px solid var(--line);border-radius:8px;padding:8px}.kpi b{display:block;font-size:17px}.kpi span{color:var(--mut);font-size:11px}
+.modal{position:fixed;inset:0;background:#0006;z-index:50;align-items:center;justify-content:center}.mbox{background:#fff;border-radius:12px;padding:18px;width:min(520px,92vw);box-shadow:0 18px 48px #0004}
+.fl{display:block;margin:8px 0;color:var(--mut);font-size:12px}.fl input{display:block;width:100%;margin-top:3px;color:var(--ink);font-size:13px}
+button.sm{padding:3px 8px;font-size:12px}tr.sel td{background:#eef2ff}.chip.rule{background:#fff4e5;color:#8a4b00}.chip.rule a{color:#8a4b00;text-decoration:none;font-weight:700}
 .chip{display:inline-block;background:var(--chip);border-radius:10px;padding:1px 8px;margin:1px;font-size:11px}
 .tag{display:inline-block;padding:2px 9px;border-radius:10px;font-weight:700;font-size:12px}
 .t0{background:#dcfce7;color:#166534}.t1{background:#e0f2fe;color:#075985}.t2{background:#f1f5f9;color:#334155}
@@ -98,7 +101,7 @@ th[title]{text-decoration:underline dotted;text-underline-offset:3px}
 <header><h1 class="brand"><!--LOGO--><span class="logo" title="Snitch"><svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
 <path d="M29 11.5c-1.6-2.6-4.6-4-8.6-4-5 0-8.4 2.4-8.4 6 0 7.6 17.6 4.8 17.6 13 0 3.8-3.6 6.4-8.9 6.4-4.3 0-7.6-1.6-9.2-4.4"/>
 <path d="M15 3.5v33M25 3.5v33"/><path d="M8.5 20h23"/></g></svg><span class="word">SNITCH</span></span><!--/LOGO--><span class="sep"></span><span class="app">TopWear Allocation Engine</span></h1><span class="built" id="built"></span>
-<nav><button data-t="sim" class="on">SKU Similarity &amp; Placement</button><button data-t="health">Store Health</button><button data-t="alloc">Allocation Engine</button><button data-t="nudge">Nudges</button></nav></header>
+<nav><button data-t="sim" class="on">SKU Similarity &amp; Placement</button><button data-t="health">Store Health</button><button data-t="alloc">Allocation Engine</button><button data-t="nudge">Nudges</button><button data-t="saved">Saved allocations</button></nav></header>
 <div class="banner" id="fakeBanner" style="display:none">TEST BUILD: similarity uses attribute vectors, not product images. Not for decisions.</div>
 <main>
 <!-- ================= TAB 1 ================= -->
@@ -138,11 +141,25 @@ th[title]{text-decoration:underline dotted;text-underline-offset:3px}
    <div style="text-align:right;margin:-2px 0 4px"><a href="#" id="wReset">reset to defaults</a></div>
    <details class="wexp"><summary>What are weights? (simple explanation with an example)</summary><div id="wExplain"></div></details>
    <div class="wt" id="wts"></div></details>
-  <div class="filters" style="margin-top:10px"><button class="b p" id="aRun">Run fresh allocation</button><button class="b" id="aCsv" disabled>Download CSV</button><span class="hint" id="aPreview"></span></div><div id="aAlert"></div>
+  <div class="filters" style="margin-top:10px"><button class="b p" id="aRun">Run fresh allocation</button><button class="b" id="aCsv" disabled>Download CSV</button><button class="b" id="aSave" disabled>Save allocation</button><span class="hint" id="aPreview"></span></div><div id="aAlert"></div>
   <div id="allocSum" style="margin-top:10px"></div><div class="scroll" id="allocTbl"></div></div>
 </section>
 <!-- ================= TAB 3 ================= -->
 <section class="tab" id="t-nudge"><div id="nudgeOut"></div></section>
+<section class="tab" id="t-saved">
+ <div class="card"><div class="bar2" style="justify-content:space-between"><h2 style="margin:0">Saved allocations</h2>
+  <span class="bar2"><input id="savedQ" placeholder="Search name, POC, store, SKU, saved by" style="min-width:300px"><span class="hint" id="savedCount"></span></span></div>
+  <div class="hint" style="margin:4px 0 8px">Finalised allocations saved from the Allocation Engine or "Where to allocate". Download gives back the exact file; Analyse shows how the stock is selling against the engine's projection. Sales update with every refresh (data up to yesterday).</div>
+  <div class="scroll" id="savedList" style="max-height:420px"></div></div>
+ <div id="savedDetail"></div>
+ <div class="card"><div class="bar2" style="justify-content:space-between"><h2 style="margin:0">Store rules <span class="mut" style="font-weight:400;font-size:13px">— learned from remarks, applied to every allocation</span></h2>
+  <span class="bar2"><input id="rulesQ" placeholder="Search store, SKU, value, remark" style="min-width:260px"><span class="hint" id="rulesCount"></span></span></div>
+  <div class="scroll" id="rulesBox" style="max-height:380px;margin-top:8px"></div></div>
+</section>
+<div id="saveDlg" class="modal" style="display:none"><div class="mbox"><h2>Save allocation</h2>
+ <label class="fl">Name<input id="svName" maxlength="120"></label><label class="fl">Saved by<input id="svBy" maxlength="40" placeholder="your name (optional)"></label>
+ <div class="mut" id="svSum" style="margin:6px 0"></div><div class="hint">Saved for 35 days, then deleted automatically. The file you download from Saved allocations is exactly this allocation.</div>
+ <div class="bar2" style="margin-top:12px;justify-content:flex-end"><span class="mut" id="svMsg" style="margin-right:auto"></span><button class="b" id="svCancel">Close</button><button class="b p" id="svSave">Save</button></div></div></div>
 </main>
 <script>
 const D=__DATA__;
@@ -194,6 +211,24 @@ function wireRadio(root,name,fn){root.querySelectorAll(`[data-r="${name}"] input
 let PBASIS='mrp';
 const mixB=m=>(m&&m[MBENCH==='ideal'?0:2])||0;   // metafield-mix benchmark chosen on the Store Health graph (ideal or weighted sales)
 const bandOf=k=>W[K[k][PBASIS==='asp'?46:28]],bandMix=h=>(PBASIS==='asp'?h.bandAsp:h.band)||{};
+// ---- store rules from merchandiser remarks (Saved allocations tab). Kept in the Worker (live) + D.rules (last build fallback).
+//  rule {bc, type, value, sku, cat, text}: type sku = this SKU; design / meta / colour / sleeve / band / fit / collar / material =
+//  any SKU of that category with that attribute value; less = this SKU (or, with a value, that design) at half quantity; note = no effect.
+const RULE_ATTR={design:8,meta:27,colour:10,sleeve:47,band:28,fit:5,collar:4,material:6};
+const RULE_LABEL={sku:"Don't send this SKU",design:"Don't send this design",meta:"Don't send this metafield",colour:"Don't send this colour",
+ sleeve:"Don't send this sleeve",band:"Don't send this price band (MRP)",fit:"Don't send this fit",collar:"Don't send this collar",
+ material:"Don't send this material",less:'Send less (half)',note:'Note only'};
+let RULES=(D.rules||[]).slice(),RULE_BC=new Map(),RULES_LIVE=false;
+function indexRules(){RULE_BC=new Map();const now=Date.now()/1000;
+ for(const r of RULES){const m=r.meta||r;if(r.exp&&r.exp<now)continue;if(!RULE_BC.has(+m.bc))RULE_BC.set(+m.bc,[]);RULE_BC.get(+m.bc).push({...m,id:r.id,exp:r.exp})}}
+indexRules();
+const ruleAttrVal=(type,k)=>type==='sku'?K[k][0]:RULE_ATTR[type]!=null?(W[K[k][RULE_ATTR[type]]]||''):'';
+// -> null, {block:rule} or {less:rule}
+function ruleHit(si,k){const rs=RULE_BC.get(+S[si][0]);if(!rs)return null;const cat=CATS[K[k][1]];let less=null;
+ for(const r of rs){if(r.type==='note')continue;if(r.cat&&r.cat!==cat&&r.type!=='sku')continue;
+  if(r.type==='less'){if(r.value?ruleAttrVal('design',k)===r.value:r.sku===K[k][0])less=r;continue}
+  if(r.type==='sku'?r.sku===K[k][0]:ruleAttrVal(r.type,k)===r.value)return {block:r}}
+ return less?{less}:null}
 function storeFactors(si,k){
  const c=K[k][1],h=D.health[si][c];if(!h)return null;
  const mk=W[K[k][27]],col=W[K[k][10]],band=bandOf(k),slv=W[K[k][47]]||'Unknown';
@@ -318,7 +353,7 @@ function allocate(ks,sts,mode,cfg,w,opts){
   if(pl&&opts.zone!=null){const o=1-opts.zone;pl.loose[o]=Array(10).fill(0);pl.packs[o]=0;if(pl.fso)pl.fso[o]=0}pools.set(k,pl)}return pools.get(k)};
  const gaps=(si,c)=>{const g=gapsOf(G,si,c,ceil);if(opts.budget&&!g.bud){g.bud=1;g.room=opts.budget.get(si*2+c)||0}return g};
  let maxStr=0;for(const si of sts)for(const c of [0,1]){const h=D.health[si][c];if(h)maxStr=Math.max(maxStr,h.str)}
- const cand=[],minP=opts.fresh?(D.fresh.min_proj_30d||2)/30:0,clusOf=new Map();
+ const skips=[],cand=[],minP=opts.fresh?(D.fresh.min_proj_30d||2)/30:0,clusOf=new Map();
  const clusterFactor=(k,si)=>{if(!clusOf.has(k))clusOf.set(k,clusterRank(k).fac);return clusOf.get(k).get(S[si][6])||0};
  for(const k of ks){if(!poolOf(k))continue;for(const si of sts){
   const f=storeFactors(si,k);if(!f)continue;f.clus=clusterFactor(k,si);const has=!!STOCK[si*K.length+k];
@@ -326,13 +361,16 @@ function allocate(ks,sts,mode,cfg,w,opts){
   if(type==='FRESH'&&has)continue;if(type==='REPLEN'&&!has)continue;
   if(opts.ftype){const rp=REPEAT.has(si*K.length+k);if(opts.ftype==='fresh'&&rp||opts.ftype==='repeat'&&!rp)continue}
   if(f.p*cfg.cover<(type==='FRESH'?2:1)||f.p<minP)continue;          // not enough projected demand for this line
-  cand.push({k,si,f,type,has})}}
+  const rh=ruleHit(si,k);if(rh&&rh.block){skips.push({si,k,rule:rh.block});continue}          // store rule: never sent here
+  cand.push({k,si,f,type,has,less:rh&&rh.less||null})}}
  const heap=[],push=x=>{heap.push(x);let i=heap.length-1;while(i){const p=(i-1)>>1;if(heap[p].v>=heap[i].v)break;[heap[p],heap[i]]=[heap[i],heap[p]];i=p}},
   pop=()=>{const t=heap[0],l=heap.pop();if(heap.length){heap[0]=l;let i=0;for(;;){const a=2*i+1,b=a+1;let m=i;if(a<heap.length&&heap[a].v>heap[m].v)m=a;if(b<heap.length&&heap[b].v>heap[m].v)m=b;if(m===i)break;[heap[m],heap[i]]=[heap[i],heap[m]];i=m}}return t};
  const maxC=opts.maxColours==null?Infinity:opts.maxColours,famSent=new Map(),ksSet=new Set(ks);
  const famFull=(si,k)=>{const st=famSent.get(si+'|'+famOf(k));return st&&!st.has(k)&&st.size>=maxC};
  const taken=new Set();        // one line per store x SKU (a family colour is never picked again by the greedy pass)
  const evalC=x=>{if(taken.has(x.si*K.length+x.k))return null;const g=gaps(x.si,x.f.c);if(g.room<=0)return null;if(x.type==='FRESH'&&famFull(x.si,x.k))return null;const line=buildLine(x.k,x.si,x.type,poolOf(x.k),x.f.p,cfg);if(!line)return null;
+  if(x.less&&x.type==='REPLEN'){if(line.packType==='PREPACK'){if(line.packs>1){const n=Math.ceil(line.packs/2),r=D.packs.prepack[String(line.depth)];line.packs=n;line.split=r.map(v=>v*n);line.units=n*line.depth}}
+   else{line.split=line.split.map(v=>Math.ceil(v/2));line.units=sum(line.split)}}            // store rule "send less": half the replen line
   if(line.units>g.room){if(x.type==='FRESH'||line.packType==='PREPACK')return null;        // fresh sets and packs are never cut down
    line.split=line.split.map(v=>Math.floor(v*g.room/line.units));line.units=sum(line.split);if(!line.units)return null}
   const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0,maxDoi=S[x.si][10]||90;
@@ -344,7 +382,7 @@ function allocate(ks,sts,mode,cfg,w,opts){
     if(opts.ftype&&((opts.ftype==='fresh')===REPEAT.has(x.si*K.length+k2)))continue;const p2=poolOf(k2);if(!p2)continue;
     const l2=buildLine(k2,x.si,'FRESH',p2,0,cfg);if(l2){need+=l2.units;n++}}
    if(need>g.room)return null}
-  const val=lineValue(x.f,line,x.type,g,w,maxStr,x.k,x.si);return {line,val}};
+  const val=lineValue(x.f,line,x.type,g,w,maxStr,x.k,x.si);if(x.less)val.s*=0.5;return {line,val}};
  for(const x of cand){const e=evalC(x);if(e){x.v=e.val.s;push(x)}}
  let EXH=false;
  const commit=(x,e)=>{taken.add(x.si*K.length+x.k);const {line,val}=e,pool=poolOf(x.k),g=gaps(x.si,x.f.c),before=poolUnits(pool,line.z);
@@ -358,13 +396,14 @@ function allocate(ks,sts,mode,cfg,w,opts){
   if(g.slv[x.f.slv]!==undefined)g.slv[x.f.slv]-=line.units;line.split.forEach((v,i)=>g.size[i]-=v);
   const st=STOCK[x.si*K.length+x.k],have=st?st[2]+st[7]:0;
   out.push({k:x.k,si:x.si,f:x.f,type:x.type,have,s:val.s,comp:val.c,sold:val.sold,gapBefore:snap,...line,availBefore:before,availAfter:poolUnits(pool,line.z),
-   doiNow:x.f.p>0?have/x.f.p:-1,doiAfter:x.f.p>0?(have+line.units)/x.f.p:-1,family:!!x.force,exhaust:EXH});
+   doiNow:x.f.p>0?have/x.f.p:-1,doiAfter:x.f.p>0?(have+line.units)/x.f.p:-1,family:!!x.force,exhaust:EXH,less:x.less?1:0});
   if(x.type!=='FRESH')return;
   const fk=famOf(x.k),key=x.si+'|'+fk,sent=famSent.get(key)||new Set();sent.add(x.k);famSent.set(key,sent);
   if(x.force)return;
   // colour family: send the other available colours of this style to the same store, best colour gap first
   const sibs=(FAM.get(fk)||[]).filter(k2=>k2!==x.k&&ksSet.has(k2)&&!sent.has(k2)&&!STOCK[x.si*K.length+k2]&&poolOf(k2)
    &&!(opts.ftype&&((opts.ftype==='fresh')===REPEAT.has(x.si*K.length+k2))))
+   .filter(k2=>{const rh=ruleHit(x.si,k2);if(rh&&rh.block){skips.push({si:x.si,k:k2,rule:rh.block});return false}return true})
    .map(k2=>({k:k2,si:x.si,f:storeFactors(x.si,k2),type:'FRESH',force:true})).filter(y=>y.f)
    .sort((p,q)=>(gaps(x.si,q.f.c).col[q.f.colKey]||0)-(gaps(x.si,p.f.c).col[p.f.colKey]||0));
   for(const y of sibs){if(sent.size>=maxC)break;const ey=evalC(y);if(ey)commit(y,ey)}};
@@ -374,6 +413,7 @@ function allocate(ks,sts,mode,cfg,w,opts){
  run();
  if(opts.exhaust){EXH=true;for(const si of sts)for(const c of [0,1]){const g=gaps(si,c);g.room=1e9}   // budget lifted for every store in scope
   for(const x of cand){if(taken.has(x.si*K.length+x.k))continue;const e=evalC(x);if(e){x.v=e.val.s;push(x)}}run();EXH=false}
+ out.ruleSkips=skips;out.ruleLess=out.filter(r=>r.less).length;
  return out;
 }
 const ALLOC_TIPS={store:'Store name (excluded: no base stock or unmapped cluster)',sku:'SKU group allocated',type:'FRESH = store does not carry the SKU; REPLEN = store carries it and needs sizes / depth',
@@ -416,7 +456,8 @@ const SKU_SIZE={'3XL':'XXXL'};             // size suffix used in item codes (e.
 // Facility per row: North = SAPL-NORTH-TAURU. South has two warehouses: prepack codes carry their own facility; loose
 // units are taken from SAPL-WH2 / SAPL-WH1 stock size by size (largest stock first), splitting a size across both if needed.
 const FAC_N='SAPL-NORTH-TAURU',FAC_S='SAPL-WH2';
-function downloadAlloc(out,name){
+// allocation -> CSV lines (header first); the same lines are frozen into a saved allocation so a re-download is identical
+function allocCsv(out){
  const hdr=['LINE_NO','BRANCH_CODE','STORE','CLUSTER','ZONE','FACILITY','SKU_CODE','QTY','ITEM_TYPE','SKU_GROUP','SIZE','PREPACK_DEPTH','CATEGORY','COLOUR','META','MRP','ALLOCATION_TYPE','COLOUR_FAMILY','EXHAUST_PASS','FACILITY_CHECK'];
  const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
  const rows=[hdr.join(',')],fac=new Map();     // remaining South facility stock per SKU, consumed row by row
@@ -429,9 +470,11 @@ function downloadAlloc(out,name){
    const fs=facOf(r.k).slice().sort((p,q)=>q[1][z]-p[1][z]);let left=u;
    for(const [n,st] of fs){if(left<=0)break;const t=Math.min(left,st[z]);if(t>0){st[z]-=t;left-=t;row(n,code,t,'LOOSE',sz,'')}}
    if(left>0)row(fs.length?fs[0][0]:FAC_S,code,left,'LOOSE',sz,'','CHECK: not in facility stock (LIVE_INV) — verify before picking')})});   // fresh-pool and facility feeds differ
- const blob=new Blob([rows.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
- el.href=u;el.download=name+'_'+new Date().toISOString().slice(0,10)+'.csv';el.click();URL.revokeObjectURL(u);
+ return rows;
 }
+function downloadCsv(rows,file){const blob=new Blob([rows.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(blob),el=document.createElement('a');
+ el.href=u;el.download=file;document.body.appendChild(el);el.click();el.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function downloadAlloc(out,name){downloadCsv(allocCsv(out),name+'_'+new Date().toISOString().slice(0,10)+'.csv')}
 const PACK_RULES=`<b>FRESH</b> (store doesn't carry the SKU): exactly <b>2 prepacks</b> when the zone has 2 coded packs on hand, otherwise one loose
  size set XS1 S2 M3 L3 XL2 XXL1 (12 units; S, M, L, XL must all be there, XS / XXL only if available; plus styles 3XL–6XL, at least 3 of 4).
  <b>REPLEN</b> (store carries it; goal: keep fast sellers stocked and fix broken sizes): per-size need = max(set qty, projected ${D.alloc.days_cover}-day sales × the store's size curve) − store stock, max 6 a size.
@@ -646,7 +689,7 @@ function renderPlacement(){
   <select id="pZone"><option value="">All zones</option><option ${z==='NORTH'?'selected':''}>NORTH</option><option ${z==='SOUTH'?'selected':''}>SOUTH</option></select>
   <select id="pClus"><option value="">All clusters</option>${[...new Set(S.map(s=>s[6]))].sort().map(x=>`<option ${x===c?'selected':''}>${esc(x)}</option>`).join('')}</select>
   <label title="After every store has taken its normal share, send ALL remaining WH stock of these SKUs (prepacks first, then loose) to the best stores in scope, ignoring the fill ceiling. Pack rules and the DOI cap still apply. Lines are tagged EXHAUST_PASS in the download"><input type="checkbox" id="pExh" ${PEXH?'checked':''}> Exhaust stock</label>
-  <button class="b" id="pCsv">Download allocation</button></div></div>
+  <button class="b" id="pCsv">Download allocation</button><button class="b p" id="pSave">Save allocation</button></div></div>
   <div class="basket" style="margin:8px 0"><b>SKUs in this allocation:</b>${BASKET.length?BASKET.map(s=>`<span class="item"><a href="#" onclick="${/^PP/i.test(s)?`doSearch('${s}')`:`showSku('${s}')`};return false">${s}</a><button title="Remove" onclick="basketToggle('${s}')">×</button></span>`).join('')+
    `<a href="#" onclick="BASKET=[];LS.set('tw_basket',[]);FAMV?showSku(K[CUR][0],true,null,FAMV):(renderPlacement(),document.getElementById('addAlloc').outerHTML=addBtn(CUR),wireAdd());return false" class="mut">clear all</a>`
    :FAMV?`<span class="mut">all ${(FAM.get(FAMV)||[]).length} colours of style ${esc(FAMV)} (nothing in the basket yet).</span>`:`<span class="mut">only ${K[CUR][0]}. Use "+ Add to allocation" on several SKUs to allocate them together.</span>`}</div>
@@ -663,11 +706,13 @@ function renderPlacement(){
   <div><b>${out.filter(r=>r.type==='FRESH').length} / ${out.filter(r=>r.type==='REPLEN').length}</b><span>fresh / replen lines</span></div>
   <div><b>${f0(sum(out.map(r=>r.sold)))}</b><span>expected sales in ${D.alloc.days_cover}d</span></div>
   ${ks.map(k=>`<div><b>${f0(byS[k]||0)}</b><span>${K[k][0]}</span></div>`).join('')}</div>
+  ${ruleNote(out)}
   ${PEXH&&out.some(r=>r.exhaust)?`<div class="hint" style="margin-top:6px">Exhaust stock: ${f0(sum(out.filter(r=>r.exhaust).map(r=>r.units)))} units in ${out.filter(r=>r.exhaust).length} extra lines beyond the fill ceiling (tagged "exhaust").</div>`:''}
   ${noStock.length?`<div class="warn" style="margin-top:6px">No WH stock (loose or prepack): ${noStock.map(k=>K[k][0]).join(', ')}.</div>`:''}
   ${!out.length?'<div class="warn" style="margin-top:6px">Nothing allocated: no WH stock, no projected demand, every store is full (fill ceiling) or no store matches the mode / filters.</div>':''}`;
  document.getElementById('pTbl').innerHTML=out.length?allocTable(out):'';sortable(document.getElementById('pTbl'));
  document.getElementById('pCsv').onclick=()=>downloadAlloc(out,'topwear_basket_allocation');
+ document.getElementById('pSave').onclick=()=>openSave(out,'placement');
 }
 
 // ---------------------------------------------------------------- TAB 2 filters
@@ -817,7 +862,7 @@ function bars(obj,label,keys,note){
 const skuMini=rows=>rows.length?`<table class="mini2"><thead><tr><th>SKU</th><th>Colour</th><th class="n" title="Store stock incl. JIT">Units</th><th class="n" title="Units sold in 30 days">L30</th><th class="n" title="Days since the style first arrived at the store">Age (d)</th></tr></thead><tbody>${rows.map(r=>`<tr class="click" onclick="showSku('${K[r[1]][0]}')"><td>${K[r[1]][0]}</td><td class="mut">${esc(W[K[r[1]][10]])}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[5]}</td></tr>`).join('')}</tbody></table>`:'<div class="mut">none</div>';
 function storeDetail(si){
  const s=S[si],el=document.getElementById('storeDetail'),c=DCAT,hh=catHealth(si,c),sf=storeFill(si),bud=freshBudget(si,'both',null);
- let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">${esc(s[1])} <span class="mut" style="font-weight:400">BC ${s[0]} · POC ${esc(s[17])} · ${esc(s[6])} · ${s[5]} · ${s[2]} · ${esc(s[4])} · ${f0(s[8])} sqft · DOI cap ${s[10]}d</span></h2>
+ let h=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">${esc(s[1])} <span class="mut" style="font-weight:400">BC ${s[0]} · POC ${esc(s[17])}${storeRuleChip(si)} · ${esc(s[6])} · ${s[5]} · ${s[2]} · ${esc(s[4])} · ${f0(s[8])} sqft · DOI cap ${s[10]}d</span></h2>
   <div class="bar2">${radio('dcat',CATS.map((x,i)=>[String(i),x==='SHIRTS'?'Shirts':'T-shirts']),String(c))}<button class="b" id="sdClose">Close</button></div></div>
   <h3>Store (all categories, STORE_CATEGORY_DELTA)</h3><div class="kpi">
    <div><b>${f0(s[12])}</b><span>base stock</span></div>
@@ -999,7 +1044,7 @@ document.getElementById('aRun').onclick=()=>{
  const t0=performance.now(),sts=scopeStores(),{m,per}=budgets(sts),exh=false,
   use=exh?sts:per.filter(x=>sum(x[1].cats)>0).map(x=>x[0]),ks=poolSkus();
  const out=use.length?allocate(ks,use,'fresh',cfgNow(),weights(),{fresh:true,budget:m,exhaust:exh,zone:RF.wh==='all'?null:RF.wh==='north'?0:1,ftype:RF.ftype==='all'?null:RF.ftype,maxColours:RF.maxCol==='all'?Infinity:+RF.maxCol}):[];
- LAST=out;LASTPER=per;RAN=true;renderAlloc(out,ks,sts,per,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;
+ LAST=out;LASTPER=per;RAN=true;renderAlloc(out,ks,sts,per,performance.now()-t0);document.getElementById('aCsv').disabled=!out.length;document.getElementById('aSave').disabled=!out.length;
 };
 function renderAlloc(out,ks,sts,per,ms){
  const units=sum(out.map(r=>r.units)),n=sum(out.filter(r=>!r.z).map(r=>r.units)),bud=sum(per.map(x=>sum(x[1].cats)));
@@ -1019,6 +1064,7 @@ function renderAlloc(out,ks,sts,per,ms){
  ${lowMin?`<div class="warn" style="margin-top:4px">${lowMin} store(s) ended below the minimum (not enough fresh SKUs / WH stock that fit) — see the budget table.</div>`:''}
  ${nd?`<div class="warn" style="margin-top:4px">${nd} store(s) held back: room overall but no Shirts / T-shirts delta (use "Force allocate" above to include them).</div>`:''}
  ${nb?`<div class="warn" style="margin-top:4px">${nb} store(s) held back: Shirts / T-shirts delta but no fresh room (use "Force allocate" above to send the category delta).</div>`:''}
+ ${ruleNote(out)}
  ${exN.length?`<div class="hint" style="margin-top:4px">Exhaust stock: ${f0(sum(exN.map(r=>r.units)))} units in ${exN.length} extra lines beyond the budgets (tagged "exhaust").</div>`:''}
  ${noProj?`<div class="hint" style="margin-top:4px">${noProj} fresh-pool SKUs have no demand projection (no similar SKUs) and were skipped.</div>`:''}
  ${!out.length?'<div class="warn" style="margin-top:6px">Nothing allocated: no store in scope has budget (fill after JIT + IST already ≥ '+Math.round(D.fresh.fill_budget*100)+'%), or no fresh SKU clears the demand bar.</div>':''}
@@ -1030,6 +1076,7 @@ function renderAlloc(out,ks,sts,per,ms){
  el.innerHTML=(out.length>2000?'<div class="hint">Showing the top 2,000 of '+f0(out.length)+' lines (the CSV has all of them).</div>':'')+(out.length?allocTable(out,2000):'');sortable(el);
 }
 document.getElementById('aCsv').onclick=()=>downloadAlloc(LAST,'topwear_fresh_allocation');
+document.getElementById('aSave').onclick=()=>openSave(LAST,'fresh run');
 
 // ---------------------------------------------------------------- TAB 3 nudges
 const NST={pend:['Pending 5d+','st-pend','In the WH 5 days or more, has stock, not allocated offline yet: act now'],
@@ -1101,4 +1148,170 @@ document.getElementById('howAlloc').innerHTML=HOW_FRESH;
  document.addEventListener('mouseout',e=>{if(e.target.closest&&e.target.closest('.skuhov'))tip.style.display='none'})}
 runUI();renderRF();refresh2();buildAlerts();nudges();renderRecent();
 const hq=location.hash.slice(1);if(hq&&idx[hq.toUpperCase()]!==undefined)showSku(hq);
+
+// ================================================================ SAVED ALLOCATIONS (log, performance, remarks -> store rules)
+// Saved in the Worker (KV, auto-deleted after 35 days); performance = offline sales since the allocation date, computed by
+// the 2-hourly build (D.perf) and compared with what the engine projected for the same days.
+const API_OK=location.protocol!=='file:';
+async function api(path,opt){if(!API_OK)throw new Error('saving needs the live site (not a local file)');
+ const r=await fetch('/api/'+path,{credentials:'same-origin',...(opt||{}),headers:{'Content-Type':'application/json'}});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}
+const istDate=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);           // YYYY-MM-DD in IST
+const ddmmyy=d=>d.slice(8,10)+'-'+d.slice(5,7)+'-'+d.slice(2,4);
+const dayDiff=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/86400000);
+const EVN=['Baseline only','1–2 similar SKUs','3+ similar SKUs','Own history'];
+// name: DD-MM-YY_POC_branchcodes_qty  e.g. 27-11-26_PREKSHYA_11-3-4_900
+function allocName(out){const sis=[...new Set(out.map(r=>r.si))],pocs=[...new Set(sis.map(si=>String(S[si][17]||'').toUpperCase()))];
+ const bcs=sis.map(si=>S[si][0]).sort((a,b)=>a-b),bcTxt=bcs.slice(0,8).join('-')+(bcs.length>8?'+'+(bcs.length-8):'');
+ return [ddmmyy(istDate()),(pocs.length===1?pocs[0]:'MULTI').replace(/[^A-Z0-9 ]/g,'').replace(/ +/g,'-')||'NA',bcTxt,sum(out.map(r=>r.units))].join('_')}
+function freezeLines(out){return out.map(r=>{const a=K[r.k],s=S[r.si];return {bc:s[0],store:s[1],cl:s[6],poc:s[17],sku:a[0],cat:CATS[a[1]],type:r.type,
+ pack:r.packType,units:r.units,sizes:r.split,codes:r.codes||[],ros:+(r.f.p||0).toFixed(4),ev:r.f.ev,have:r.have||0,score:+(r.s||0).toFixed(4),
+ design:W[a[8]],meta:W[a[27]],colour:W[a[10]],sleeve:W[a[47]],band:W[a[28]],fit:W[a[5]],collar:W[a[4]],material:W[a[6]],mrp:a[13]}})}
+let SAVE_OUT=null,SAVE_SRC='';
+function openSave(out,src){if(!out||!out.length){alert('Nothing to save: run an allocation first.');return}SAVE_OUT=out;SAVE_SRC=src;
+ const d=document.getElementById('saveDlg'),stores=new Set(out.map(r=>r.si)).size,skus=new Set(out.map(r=>r.k)).size;
+ d.querySelector('#svName').value=allocName(out);d.querySelector('#svBy').value=LS.get('tw_by','');
+ d.querySelector('#svSum').innerHTML=`${f0(sum(out.map(r=>r.units)))} units · ${stores} store${stores>1?'s':''} · ${skus} SKU${skus>1?'s':''} · ${out.length} lines`;
+ d.querySelector('#svMsg').textContent=API_OK?'':'Open the live site to save (this is a local copy).';d.style.display='flex';d.querySelector('#svName').focus()}
+async function doSave(){const d=document.getElementById('saveDlg'),msg=d.querySelector('#svMsg'),out=SAVE_OUT;let name=d.querySelector('#svName').value.trim();
+ const by=d.querySelector('#svBy').value.trim();LS.set('tw_by',by);if(!name){msg.textContent='Give it a name.';return}
+ if(SAVED.some(x=>x.meta.name===name)){let i=2;while(SAVED.some(x=>x.meta.name===name+'_'+i))i++;name+='_'+i}
+ const pocs=[...new Set(out.map(r=>String(S[r.si][17]||'').toUpperCase()))];
+ const body={meta:{name,date:istDate(),poc:pocs.length===1?pocs[0]:'MULTI',stores:new Set(out.map(r=>r.si)).size,skus:new Set(out.map(r=>r.k)).size,
+  units:sum(out.map(r=>r.units)),by,src:SAVE_SRC},cfg:{built:D.built||'',weights:weights(),cover:D.alloc.days_cover},lines:freezeLines(out),csv:allocCsv(out)};
+ msg.textContent='Saving…';
+ try{const r=await api('allocs',{method:'POST',body:JSON.stringify(body)});SAVED=SAVED.filter(x=>x.id!==r.id);SAVED.unshift({id:r.id,meta:r.meta,exp:r.exp});
+  CACHE.set(r.id,{meta:r.meta,cfg:body.cfg,lines:body.lines,csv:body.csv});msg.innerHTML=`Saved as <b>${esc(name)}</b>. <a href="#" onclick="closeSave();tabGo('saved');return false">Open Saved allocations</a>`;renderSaved()}
+ catch(e){msg.textContent='Not saved: '+e.message}}
+function closeSave(){document.getElementById('saveDlg').style.display='none'}
+
+let SAVED=[],SAVED_ERR='',SEL=null,SQ='';const CACHE=new Map();
+async function loadSaved(){try{const l=await api('allocs');const known=new Set(l.map(x=>x.id));
+  SAVED=[...SAVED.filter(x=>!known.has(x.id)&&Date.now()-(x.meta.created||0)<120000),...l].sort((a,b)=>(b.meta.created||0)-(a.meta.created||0));SAVED_ERR=''}   // KV lists can lag ~1 min after a save
+ catch(e){SAVED_ERR=e.message}renderSaved()}
+async function getAlloc(id){if(!CACHE.has(id))CACHE.set(id,await api('allocs/'+id));return CACHE.get(id)}
+async function loadRules(){try{RULES=await api('rules');RULES_LIVE=true;indexRules()}catch(e){RULES_LIVE=false}if(document.getElementById('rulesBox'))renderRules()}
+const perfOf=id=>((D.perf||{}).a||{})[id]||null;
+function soldMap(id){const m=new Map(),d=new Map();for(const [bc,sku,off,u,rev] of perfOf(id)||[]){const key=bc+'|'+sku,o=m.get(key)||{u:0,rev:0};o.u+=u;o.rev+=rev;m.set(key,o);d.set(off,(d.get(off)||0)+u)}return {m,d}}
+function renderSaved(){const el=document.getElementById('savedList');if(!el)return;
+ const q=SQ.trim().toLowerCase(),now=Date.now()/1000,asOf=(D.perf||{}).asOf;
+ const rows=SAVED.filter(x=>{if(!q)return true;const m=x.meta;return [m.name,m.poc,m.by,m.src].join(' ').toLowerCase().includes(q)
+  ||(CACHE.has(x.id)&&CACHE.get(x.id).lines.some(l=>(l.store+' '+l.sku+' '+l.bc).toLowerCase().includes(q)))});
+ document.getElementById('savedCount').textContent=SAVED_ERR?'':`${rows.length} of ${SAVED.length} saved · auto-deleted 35 days after saving`;
+ el.innerHTML=SAVED_ERR?`<div class="warn">Could not load saved allocations: ${esc(SAVED_ERR)}</div>`:!rows.length?`<div class="mut" style="padding:10px 0">${SAVED.length?'No match.':'Nothing saved yet. Use "Save allocation" next to Download in the Allocation Engine or Where to allocate.'}</div>`:
+ `<table><thead><tr><th>Name</th><th>Date</th><th>POC</th><th class="n">Stores</th><th class="n">SKUs</th><th class="n">Units</th><th class="n" title="Units sold at these stores since the allocation date ÷ units sent (from the last refresh)">Sold / sent</th><th>Saved by</th><th class="n">Deletes in</th><th></th></tr></thead><tbody>${
+ rows.map(x=>{const m=x.meta,p=perfOf(x.id),u=p?sum(p.map(r=>r[3])):null,left=x.exp?Math.max(0,Math.ceil((x.exp-now)/86400)):null;
+  return `<tr class="${x.id===SEL?'sel':''}"><td><a href="#" onclick="openSaved('${x.id}');return false"><b>${esc(m.name)}</b></a></td><td>${esc(m.date)}</td><td>${esc(m.poc)}</td>
+  <td class="n">${m.stores}</td><td class="n">${m.skus}</td><td class="n">${f0(m.units)}</td>
+  <td class="n">${u==null?`<span class="mut" title="${m.date>=(asOf||'')?'Sales start counting after the next refresh':'No sales yet'}">–</span>`:pc(Math.min(u,m.units)/Math.max(m.units,1))}</td>
+  <td>${esc(m.by||'')}</td><td class="n mut">${left==null?'':left+'d'}</td>
+  <td style="white-space:nowrap"><button class="b sm" onclick="redownload('${x.id}')">Download</button> <button class="b sm p" onclick="openSaved('${x.id}')">Analyse</button> <button class="b sm" title="Delete now" onclick="delSaved('${x.id}')">×</button></td></tr>`}).join('')}</tbody></table>`;
+ sortable(el)}
+async function redownload(id){try{const a=await getAlloc(id);downloadCsv(a.csv,a.meta.name+'.csv')}catch(e){alert('Download failed: '+e.message)}}
+async function delSaved(id){const x=SAVED.find(y=>y.id===id);if(!confirm('Delete "'+(x?x.meta.name:id)+'" now? Store rules made from its remarks are kept.'))return;
+ try{await api('allocs/'+id,{method:'DELETE'});SAVED=SAVED.filter(y=>y.id!==id);CACHE.delete(id);if(SEL===id){SEL=null;document.getElementById('savedDetail').innerHTML=''}renderSaved()}catch(e){alert('Delete failed: '+e.message)}}
+
+// ---- analysis: actual vs projected for the same days, by day / store / SKU / evidence tier
+function perfCalc(a,id){const asOf=(D.perf||{}).asOf||'',days=asOf?Math.max(0,dayDiff(a.meta.date,asOf)+1):0,{m,d}=soldMap(id);
+ const lines=a.lines.map(l=>{const s=m.get(l.bc+'|'+l.sku)||{u:0,rev:0},proj=Math.min(l.ros*days,l.units+l.have);return {...l,sold:s.u,rev:s.rev,proj}});
+ // store x SKU can appear once per allocation; sales are per store x SKU, so they are counted once
+ return {days,asOf,lines,daily:d}}
+const agg=(lines,key)=>{const g=new Map();for(const l of lines){const k=key(l),o=g.get(k)||{k,units:0,sold:0,proj:0,rev:0,n:0};o.units+=l.units;o.sold+=l.sold;o.proj+=l.proj;o.rev+=l.rev;o.n++;g.set(k,o)}return [...g.values()]};
+const ratio=(a,b)=>b>0?a/b:-1,acc=(a,p)=>p>0?`<span class="${a/p<0.5?'bad':a/p>1.5?'good':''}">${(a/p*100).toFixed(0)}%</span>`:'<span class="mut">–</span>';
+function aggTable(rows,label,more){return `<div class="scroll" style="max-height:320px"><table class="mini2"><thead><tr><th>${label}</th>${more?'<th>'+more[0]+'</th>':''}<th class="n">Lines</th><th class="n">Sent</th><th class="n" title="Offline sales of these SKUs at these stores since the allocation date">Sold</th><th class="n" title="Sold ÷ sent (capped at 100% per line)">Sell-through</th><th class="n" title="Engine projection for the same days: projected ROS × days since allocation">Projected</th><th class="n" title="Sold ÷ projected for the same days">Actual vs proj.</th><th class="n">Revenue</th></tr></thead><tbody>${
+ rows.map(r=>`<tr><td>${esc(r.k)}</td>${more?'<td>'+esc(more[1](r))+'</td>':''}<td class="n">${r.n}</td><td class="n">${f0(r.units)}</td><td class="n">${f0(r.sold)}</td><td class="n">${pc(Math.min(r.sold,r.units)/Math.max(r.units,1))}</td><td class="n">${f1(r.proj)}</td><td class="n">${acc(r.sold,r.proj)}</td><td class="n">₹${f0(r.rev)}</td></tr>`).join('')}</tbody></table></div>`}
+function cumChart(pc_,a){const n=Math.max(pc_.days,1),W_=640,H=170,P=28,act=[],pr=[];let c=0;const dayProj=sum(pc_.lines.map(l=>l.ros));
+ for(let i=0;i<n;i++){c+=pc_.daily.get(i)||0;act.push(c);pr.push(Math.min(dayProj*(i+1),sum(pc_.lines.map(l=>l.units+l.have))))}
+ const mx=Math.max(1,...act,...pr),x=i=>P+(n===1?0:i*(W_-P-8)/(n-1)),y=v=>H-P+4-(v/mx)*(H-P-8),pts=arr=>arr.map((v,i)=>x(i).toFixed(1)+','+y(v).toFixed(1)).join(' ');
+ return `<svg viewBox="0 0 ${W_} ${H}" style="width:100%;max-width:${W_}px;height:auto"><line x1="${P}" y1="${H-P+4}" x2="${W_-8}" y2="${H-P+4}" stroke="#e3e6ec"/>
+  <text x="${P}" y="12" font-size="10" fill="#6b7385">${f0(mx)} units</text><text x="${P}" y="${H-6}" font-size="10" fill="#6b7385">${esc(a.meta.date)}</text><text x="${W_-8}" y="${H-6}" font-size="10" fill="#6b7385" text-anchor="end">${esc(pc_.asOf)}</text>
+  <polyline points="${pts(pr)}" fill="none" stroke="#111827" stroke-width="1.5" stroke-dasharray="4 3"/><polyline points="${pts(act)}" fill="none" stroke="#1f5eff" stroke-width="2.2"/></svg>
+  <div class="chartlegend"><span><i class="lg-bar" style="background:#1f5eff;height:3px"></i> actual sold (cumulative)</span><span><i class="lg-line" style="border-left:none;border-top:2px dashed #111827;width:16px;height:0"></i> projected for the same days</span></div>`}
+function storeBars(rows){const mx=Math.max(1,...rows.map(r=>Math.max(r.sold,r.proj)));
+ return rows.map(r=>`<div class="bar" title="${esc(r.k)}: sold ${f0(r.sold)} · projected ${f1(r.proj)} · sent ${f0(r.units)}"><span class="l">${esc(r.k)}</span><span class="t"><span class="a" style="width:${(r.sold/mx*100).toFixed(1)}%"></span><span class="i" style="left:${(r.proj/mx*100).toFixed(1)}%"></span></span><span class="d">${f0(r.sold)} / ${f1(r.proj)}</span></div>`).join('')}
+async function openSaved(id){SEL=id;renderSaved();const el=document.getElementById('savedDetail');el.innerHTML='<div class="card mut">Loading…</div>';
+ let a;try{a=await getAlloc(id)}catch(e){el.innerHTML=`<div class="card warn">Could not open: ${esc(e.message)}</div>`;return}
+ const P=perfCalc(a,id),L=P.lines,sent=sum(L.map(l=>l.units)),sold=sum(L.map(l=>l.sold)),proj=sum(L.map(l=>l.proj)),rev=sum(L.map(l=>l.rev));
+ const fr=L.filter(l=>l.type==='FRESH'),frSold=sum(fr.map(l=>Math.min(l.sold,l.units))),zero=L.filter(l=>!l.sold).length;
+ const over=P.days>=14?L.filter(l=>l.proj>=1&&l.sold<0.5*l.proj).sort((p,q)=>(q.proj-q.sold)-(p.proj-p.sold)):[],beat=L.filter(l=>l.proj>=1&&l.sold>1.5*l.proj).sort((p,q)=>q.sold/q.proj-p.sold/p.proj);
+ const noPerf=!perfOf(id),tooNew=!P.asOf||a.meta.date>P.asOf;
+ el.innerHTML=`<div class="card"><div class="bar2" style="justify-content:space-between"><h2 style="margin:0">${esc(a.meta.name)}</h2>
+  <span class="mut">${esc(a.meta.date)} · ${esc(a.meta.by||'')} · sales to ${esc(P.asOf||'–')} (${P.days} day${P.days===1?'':'s'})</span>
+  <span><button class="b" onclick="redownload('${id}')">Download</button> <button class="b" onclick="SEL=null;renderSaved();document.getElementById('savedDetail').innerHTML=''">Close</button></span></div>
+  ${tooNew?'<div class="hint" style="margin-top:6px">Saved today: sales are counted from the next refresh (every 2 hours, data up to yesterday).</div>':noPerf?'<div class="hint" style="margin-top:6px">No offline sales of these SKUs at these stores since the allocation date (as of the last refresh).</div>':''}
+  <div class="kpi" style="margin-top:10px"><div><b>${f0(sent)}</b><span>units sent</span></div><div><b>${f0(sold)}</b><span>sold since ${esc(a.meta.date)}</span></div>
+  <div title="Sold ÷ sent, capped per line"><b>${pc(sum(L.map(l=>Math.min(l.sold,l.units)))/Math.max(sent,1))}</b><span>sell-through</span></div>
+  <div title="Fresh lines only: the store had none before, so every sale is from this allocation"><b>${fr.length?pc(frSold/Math.max(sum(fr.map(l=>l.units)),1)):'–'}</b><span>fresh sell-through</span></div>
+  <div title="Engine projection for the same ${P.days} days"><b>${f1(proj)}</b><span>projected, same days</span></div>
+  <div title="Sold ÷ projected for the same days"><b>${proj>0?acc(sold,proj):'–'}</b><span>actual vs projected</span></div>
+  <div><b>₹${f0(rev)}</b><span>revenue</span></div><div><b class="${zero?'warn':''}">${zero}</b><span>lines with no sale</span></div></div>
+  <div class="hint" style="margin-top:6px">Sold = offline sales of the SKU at the store from the allocation date to yesterday. Replen lines also sell stock the store already had. Stock takes a few days to reach the store, so the first days usually trail the projection.</div>
+  <div class="row" style="margin-top:6px"><div class="grow"><h3>Projected vs actual, day by day</h3>${cumChart(P,a)}</div>
+   <div class="grow"><h3>By store <span class="mut" style="text-transform:none">(bar = sold, | = projected)</span></h3>${storeBars(agg(L,l=>l.store).sort((p,q)=>q.units-p.units).slice(0,15))}</div></div>
+  ${over.length||beat.length?`<div class="row">${over.length?`<div class="grow"><h3>Below projection <span class="mut" style="text-transform:none">(14+ days, under half)</span></h3>${over.slice(0,8).map(l=>`<div>${esc(l.store)} · <b>${esc(l.sku)}</b> <span class="mut">sold ${f0(l.sold)} vs ${f1(l.proj)} projected</span></div>`).join('')}</div>`:''}
+   ${beat.length?`<div class="grow"><h3>Beating projection <span class="mut" style="text-transform:none">(1.5×+)</span></h3>${beat.slice(0,8).map(l=>`<div>${esc(l.store)} · <b>${esc(l.sku)}</b> <span class="mut">sold ${f0(l.sold)} vs ${f1(l.proj)} projected</span></div>`).join('')}</div>`:''}</div>`:''}
+  <div class="row"><div class="grow"><h3>By SKU</h3>${aggTable(agg(L,l=>l.sku).sort((p,q)=>q.units-p.units),'SKU')}</div>
+   <div class="grow"><h3>By evidence <span class="mut" style="text-transform:none">(where the projection is weakest)</span></h3>${aggTable(agg(L,l=>EVN[l.ev]||'–').sort((p,q)=>q.units-p.units),'Evidence')}</div></div>
+  <h3>Lines &amp; remarks <span class="mut" style="text-transform:none">— a remark becomes a store rule the engine follows next time</span></h3>
+  <div class="scroll" id="savedLines" style="max-height:460px">${linesTable(L,id)}</div></div>`;
+ sortable(document.getElementById('savedLines'))}
+function linesTable(L,id){return `<table class="mini2"><thead><tr><th>Store</th><th>SKU</th><th>Type</th><th>Design / meta</th><th>Colour</th><th>Sleeve</th><th class="n">Sent</th><th class="n">Sold</th><th class="n">Projected</th><th class="n">Actual vs proj.</th><th>Evidence</th><th>Remarks / rules</th></tr></thead><tbody>${
+ L.map((l,i)=>`<tr data-i="${i}"><td>${esc(l.store)}</td><td><b>${esc(l.sku)}</b></td><td>${l.type}</td><td>${esc(l.design)}${l.meta&&l.meta!==l.design?' <span class="mut">'+esc(l.meta)+'</span>':''}</td><td>${esc(l.colour)}</td><td>${esc(l.sleeve)}</td>
+ <td class="n">${l.units}</td><td class="n">${f0(l.sold)}</td><td class="n">${f1(l.proj)}</td><td class="n">${acc(l.sold,l.proj)}</td><td class="mut">${EVN[l.ev]||''}</td>
+ <td class="rm">${ruleChips(l)} <a href="#" onclick="remarkForm('${id}',${i});return false">+ remark</a></td></tr>`).join('')}</tbody></table>`}
+const ruleMatches=(r,l)=>+r.bc===+l.bc&&(r.type==='sku'?r.sku===l.sku:r.type==='less'?(r.value?l.design===r.value:r.sku===l.sku):r.type==='note'?r.sku===l.sku:(!r.cat||r.cat===l.cat)&&l[r.type]===r.value);
+function ruleChips(l){return (RULE_BC.get(+l.bc)||[]).filter(r=>ruleMatches(r,l)).map(r=>`<span class="chip rule" title="${esc((r.text||'')+(r.by?' — '+r.by:''))}">${esc(ruleText(r))}${r.id?` <a href="#" onclick="delRule('${r.id}');return false" title="Remove rule">×</a>`:''}</span>`).join('')}
+const ruleText=r=>r.type==='sku'?"Don't send "+r.sku:r.type==='less'?'Send less'+(r.value?': '+r.value:' '+r.sku):r.type==='note'?'Note: '+(r.text||'').slice(0,40):RULE_LABEL[r.type].replace('this ','')+': '+r.value;
+// free text -> suggested rule type (the merchandiser confirms)
+function suggestType(t){t=(t||'').toLowerCase();
+ if(/\b(less|reduce|lower|too many|too much|fewer|half (the )?qty|half quantity)\b/.test(t))return 'less';
+ if(/\bsleeve|half sleeve|full sleeve|\bhalf\b|\bfull\b/.test(t))return 'sleeve';
+ if(/colou?r|shade/.test(t))return 'colour';
+ if(/design|print|check|stripe|pattern|graphic|solid|textured/.test(t))return 'design';
+ if(/\bfit\b|oversized|slim|relaxed|regular fit/.test(t))return 'fit';
+ if(/collar|polo|crew|henley|mandarin|cuban/.test(t))return 'collar';
+ if(/fabric|material|linen|cotton|polyester|rayon|denim|corduroy/.test(t))return 'material';
+ if(/price|expensive|costly|mrp|cheap/.test(t))return 'band';
+ if(/don'?t|do not|never|stop|not (allocate|send|sell)|won'?t|doesn'?t|not work/.test(t))return 'sku';
+ return 'note'}
+function remarkForm(id,i){const a=CACHE.get(id),l=a&&perfCalc(a,id).lines[i];if(!l)return;const tb=document.querySelector('#savedLines tbody');
+ tb.querySelectorAll('tr.rf').forEach(x=>x.remove());const tr=document.createElement('tr');tr.className='rf';
+ const opt=(t)=>{const v=t==='sku'||t==='note'?'':t==='less'?'':l[t];return `<option value="${t}">${esc(RULE_LABEL[t])}${t==='sku'?' — '+esc(l.sku):t==='less'?' — '+esc(l.sku):v?' — '+esc(v):''}</option>`};
+ tr.innerHTML=`<td colspan="12" style="background:#f8fafc;white-space:normal"><div class="bar2" style="gap:8px;flex-wrap:wrap"><b>${esc(l.store)}</b>
+  <input id="rmText" placeholder="Remark, e.g. half sleeve doesn't work here" style="min-width:300px" maxlength="250">
+  <select id="rmType">${['sku','design','meta','colour','sleeve','fit','collar','material','band','less','note'].filter(t=>t==='sku'||t==='less'||t==='note'||l[t]).map(opt).join('')}</select>
+  <select id="rmDays" title="How long the rule applies"><option value="90">for 90 days</option><option value="30">for 30 days</option><option value="0">until removed</option></select>
+  <button class="b p" id="rmSave">Save remark</button><button class="b" id="rmCancel">Cancel</button><span class="mut" id="rmMsg"></span></div>
+  <div class="hint" style="margin-top:4px">The rule applies to <b>${esc(l.store)}</b> only${l.cat?' and '+esc(l.cat):''}. "Don't send" rules skip matching lines in every future allocation (the stock goes to the next best store); "Send less" halves replen quantities and sends fresh lines later. "Note only" is kept with the allocation and has no effect.</div></td>`;
+ tb.querySelector(`tr[data-i="${i}"]`).after(tr);const tx=tr.querySelector('#rmText'),ty=tr.querySelector('#rmType');let touched=false;
+ ty.onchange=()=>touched=true;tx.oninput=()=>{if(!touched){const s=suggestType(tx.value);if([...ty.options].some(o=>o.value===s))ty.value=s}};
+ tr.querySelector('#rmCancel').onclick=()=>tr.remove();
+ tr.querySelector('#rmSave').onclick=async()=>{const t=ty.value,v=t==='sku'||t==='note'?'':t==='less'?'':l[t],msg=tr.querySelector('#rmMsg');
+  if(t==='note'&&!tx.value.trim()){msg.textContent='Write the note.';return}
+  const body={bc:l.bc,type:t,value:v,sku:l.sku,cat:t==='sku'?'':l.cat,text:tx.value.trim(),by:LS.get('tw_by',''),alloc:id,store:l.store,days:+tr.querySelector('#rmDays').value};
+  msg.textContent='Saving…';try{const r=await api('rules',{method:'POST',body:JSON.stringify(body)});RULES.push({id:r.id,meta:r.meta,exp:r.exp});indexRules();
+   tr.remove();document.querySelector(`#savedLines tr[data-i="${i}"] td.rm`).innerHTML=ruleChips(l)+` <a href="#" onclick="remarkForm('${id}',${i});return false">+ remark</a>`;renderRules()}
+  catch(e){msg.textContent='Not saved: '+e.message}};tx.focus()}
+async function delRule(id){if(!confirm('Remove this store rule? Future allocations will no longer follow it.'))return;
+ try{await api('rules/'+id,{method:'DELETE'});RULES=RULES.filter(r=>r.id!==id);indexRules();renderRules();if(SEL&&CACHE.has(SEL))openSaved(SEL)}catch(e){alert('Not removed: '+e.message)}}
+let RQ='';
+function renderRules(){const el=document.getElementById('rulesBox');if(!el)return;const q=RQ.trim().toLowerCase(),now=Date.now()/1000;
+ const rs=RULES.map(r=>({id:r.id,exp:r.exp,...(r.meta||r)})).filter(r=>!(r.exp&&r.exp<now)).filter(r=>!q||[r.store,r.bc,r.sku,r.value,r.text,r.by,RULE_LABEL[r.type]].join(' ').toLowerCase().includes(q)).sort((a,b)=>(b.created||0)-(a.created||0));
+ document.getElementById('rulesCount').textContent=`${rs.length} rule${rs.length===1?'':'s'}${RULES_LIVE?'':' (from the last refresh — live list unavailable)'}`;
+ el.innerHTML=!rs.length?'<div class="mut" style="padding:8px 0">No store rules yet. Add a remark on a line of a saved allocation.</div>':`<table class="mini2"><thead><tr><th>Store</th><th class="n">BC</th><th>Rule</th><th>Category</th><th>Remark</th><th>By</th><th>Added</th><th>Expires</th><th></th></tr></thead><tbody>${
+ rs.map(r=>`<tr><td>${esc(r.store||'')}</td><td class="n">${r.bc}</td><td><b>${esc(ruleText(r))}</b></td><td>${esc(r.cat||'all')}</td><td style="white-space:normal;max-width:340px">${esc(r.text||'')}</td><td>${esc(r.by||'')}</td>
+ <td class="mut">${r.created?new Date(r.created).toISOString().slice(0,10):''}</td><td class="mut">${r.exp?new Date(r.exp*1000).toISOString().slice(0,10):'never'}</td><td>${r.id?`<button class="b sm" onclick="delRule('${r.id}')">Remove</button>`:''}</td></tr>`).join('')}</tbody></table>`;
+ sortable(el)}
+// Store Health header: how many store rules this store has (hover = list)
+function storeRuleChip(si){const rs=(RULE_BC.get(+S[si][0])||[]).filter(r=>r.type!=='note');if(!rs.length)return '';
+ return ` <span class="chip rule" style="font-weight:400" title="${esc(rs.map(r=>ruleText(r)+(r.cat?' ('+r.cat+')':'')+(r.text?' — '+r.text:'')).join('\n'))}">${rs.length} store rule${rs.length>1?'s':''}</span>`}
+// summary line for the allocation views: what the store rules changed
+function ruleNote(out){const sk=out.ruleSkips||[];if(!sk.length&&!out.ruleLess)return '';const st=new Set(sk.map(x=>x.si)).size;
+ return `<div class="hint" style="margin-top:6px">Store rules: ${sk.length} line${sk.length===1?'':'s'} skipped at ${st} store${st===1?'':'s'}${out.ruleLess?`, ${out.ruleLess} sent at reduced priority / quantity`:''} (see Saved allocations → Store rules).</div>`}
+document.getElementById('savedQ').oninput=e=>{SQ=e.target.value;renderSaved()};
+document.getElementById('rulesQ').oninput=e=>{RQ=e.target.value;renderRules()};
+document.getElementById('svSave').onclick=doSave;document.getElementById('svCancel').onclick=closeSave;
+document.getElementById('saveDlg').onclick=e=>{if(e.target.id==='saveDlg')closeSave()};
+document.querySelector('nav button[data-t="saved"]').addEventListener('click',()=>{loadSaved();loadRules()});
+renderRules();if(API_OK)loadRules();
 </script></body></html>
