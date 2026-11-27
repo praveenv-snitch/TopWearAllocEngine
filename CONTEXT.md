@@ -113,3 +113,4 @@ A daily-refreshed dashboard for Shirts + T-shirts offline allocation. Similar SK
   the allocator skips matching lines (`out.ruleSkips`, family colours too) and "send less" halves replen lines
   (prepacks: half the packs, min 1) and halves the score of fresh lines. Shown in the allocation summaries, the Store
   Health header chip and the Store rules list. Tests: `tests/smoke_saved.js`.
+- Defaults: metafield gaps vs weighted sales share (MBENCH=sales), price bands / gaps on ASP (PBASIS=asp). Exhaust stock in Where to allocate: None (default) / Exhaust prepacks (sealed packs only, opts.exhaust='prepacks') / Exhaust all.
