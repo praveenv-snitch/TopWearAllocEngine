@@ -352,7 +352,11 @@ def main():
                           _poc(_s(getattr(r, "POC", "")))])        # 17 cluster POC (STORE_CATEGORY_DELTA)
         health_out.append([hl.get((int(r.BC), c)) for c in cats])
 
+    print("Saved allocations + store rules...")
+    from engine import alloc_log
+    saved = alloc_log.build()
     payload = {
+        "perf": saved["perf"], "rules": saved["rules"],
         "built": datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%d %b %Y, %I:%M %p IST"),
         "fake": embeddings.FAKE, "imgPrefix": IMG_PREFIX, "cats": cats, "sizes": C.SIZES, "soft": soft,
         "tierTag": C.SIM["tier_tag"], "tierMult": C.SIM["tier_mult"], "damp": C.SIM["soft_boost_damping"],
