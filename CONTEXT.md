@@ -91,3 +91,5 @@ A daily-refreshed dashboard for Shirts + T-shirts offline allocation. Similar SK
 - **Store Health:** a chart legend at the top, and the MRP/ASP toggle on the price-band graph (it drives the allocation price gaps).
 - **Allocation tables:** a Meta column (and CSV META), and the SKU image appears when you hover over the SKU code.
 - **Fresh run:** cluster scope uses search chips.
+- Small-cluster cap: clusters with fewer than CLUS_MIN (3) stores are capped at the median cluster score in clusterRank (marked "capped" in the cluster table).
+- Branding: build embeds web/assets/ (or web/assests/) favicon.* as the tab icon and snitch_logo.* as the header logo; the logo is auto-cropped to the wordmark and scaled to header height.
