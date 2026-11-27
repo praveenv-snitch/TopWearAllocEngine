@@ -208,7 +208,7 @@ function wireRadio(root,name,fn){root.querySelectorAll(`[data-r="${name}"] input
 
 // ---------------------------------------------------------------- store gaps + scoring (shared by placement and the bulk run)
 // price basis for bands, filters and gaps: 'mrp' (K[28], health.band) or 'asp' (K[46], health.bandAsp)
-let PBASIS='mrp';
+let PBASIS='asp';      // price bands / price gaps on ASP by default (toggle on the Store Health price graph)
 const mixB=m=>(m&&m[MBENCH==='ideal'?0:2])||0;   // metafield-mix benchmark chosen on the Store Health graph (ideal or weighted sales)
 const bandOf=k=>W[K[k][PBASIS==='asp'?46:28]],bandMix=h=>(PBASIS==='asp'?h.bandAsp:h.band)||{};
 // ---- store rules from merchandiser remarks (Saved allocations tab). Kept in the Worker (live) + D.rules (last build fallback).
@@ -338,7 +338,7 @@ function lineValue(f,line,type,g,w,maxStr,k,si){
 //  opts.fresh  -> use the fresh pool (AV_MASTER_HTMBASE) instead of the placement pool
 //  opts.budget -> Map(si*2+c -> units) replacing the fill-ceiling room (fresh run: 110% budget or manual units)
 //  opts.zone   -> 0 North / 1 South only (no fallback); opts.ftype -> 'fresh' never carried / 'repeat' carried before
-//  opts.exhaust -> after the budget pass, give every remaining WH unit / pack to the best stores in scope (no budget)
+//  opts.exhaust -> true / 'all' | 'prepacks' (sealed packs only): after the budget pass, give every remaining WH unit / pack to the best stores in scope (no budget)
 //  opts.pin     -> {k: [prepack codes]} codes to send first (prepacks added to the basket from the SKU tab)
 //  cluster sellability: per SKU, clusters ranked by average projected ROS per store (all stores of the cluster, so a
 //                  cluster with more stores is not favoured); factor = cluster avg / best cluster avg (0-1).
@@ -347,6 +347,7 @@ function lineValue(f,line,type,g,w,maxStr,k,si){
 //                  the store's colour gap. Family colours skip the demand bar and DOI check but never the budget / WH stock.
 function allocate(ks,sts,mode,cfg,w,opts){
  opts=opts||{};
+ let EXH=false;const exPP=opts.exhaust==='prepacks';   // EXH = exhaust pass running
  const ceil=(cfg.fill||140)/100,G=newGapState(),pools=new Map(),out=[];
  const poolOf=k=>{if(!pools.has(k)){const pl=opts.fresh?freshPool(k):placementPool(k);
   if(pl&&opts.pin&&opts.pin[k])for(const z of [0,1]){const pin=opts.pin[k].filter(c=>pl.codes[z].includes(c));pl.codes[z]=[...pin,...pl.codes[z].filter(c=>!pin.includes(c))]}
@@ -369,6 +370,7 @@ function allocate(ks,sts,mode,cfg,w,opts){
  const famFull=(si,k)=>{const st=famSent.get(si+'|'+famOf(k));return st&&!st.has(k)&&st.size>=maxC};
  const taken=new Set();        // one line per store x SKU (a family colour is never picked again by the greedy pass)
  const evalC=x=>{if(taken.has(x.si*K.length+x.k))return null;const g=gaps(x.si,x.f.c);if(g.room<=0)return null;if(x.type==='FRESH'&&famFull(x.si,x.k))return null;const line=buildLine(x.k,x.si,x.type,poolOf(x.k),x.f.p,cfg);if(!line)return null;
+  if(EXH&&exPP&&line.packType!=='PREPACK')return null;                      // exhaust prepacks only: loose stays in the WH
   if(x.less&&x.type==='REPLEN'){if(line.packType==='PREPACK'){if(line.packs>1){const n=Math.ceil(line.packs/2),r=D.packs.prepack[String(line.depth)];line.packs=n;line.split=r.map(v=>v*n);line.units=n*line.depth}}
    else{line.split=line.split.map(v=>Math.ceil(v/2));line.units=sum(line.split)}}            // store rule "send less": half the replen line
   if(line.units>g.room){if(x.type==='FRESH'||line.packType==='PREPACK')return null;        // fresh sets and packs are never cut down
@@ -384,7 +386,7 @@ function allocate(ks,sts,mode,cfg,w,opts){
    if(need>g.room)return null}
   const val=lineValue(x.f,line,x.type,g,w,maxStr,x.k,x.si);if(x.less)val.s*=0.5;return {line,val}};
  for(const x of cand){const e=evalC(x);if(e){x.v=e.val.s;push(x)}}
- let EXH=false;
+
  const commit=(x,e)=>{taken.add(x.si*K.length+x.k);const {line,val}=e,pool=poolOf(x.k),g=gaps(x.si,x.f.c),before=poolUnits(pool,line.z);
   if(line.packType==='PREPACK'){pool.packs[line.z]-=line.packs;line.codes=pool.codes[line.z].splice(0,line.packs)}
   else{line.split.forEach((v,i)=>pool.loose[line.z][i]-=v);line.codes=[];if(x.type==='FRESH'&&pool.fso)pool.fso[line.z]--}
@@ -679,7 +681,7 @@ function explainer(a){
 }
 
 // ---------------------------------------------------------------- TAB 1: where to allocate (basket)
-let PEXH=false;
+let PEXH='';            // '' none (default) | 'prepacks' | 'all'
 function renderPlacement(){
  const el=document.getElementById('placeCard');if(!el||CUR===null)return;
  const pin={},ks=[...new Set((BASKET.length?BASKET:FAMV?(FAM.get(FAMV)||[]).map(x=>K[x][0]):[K[CUR][0]]).map(s=>{const k=idx[basketSku(s)];if(k!==undefined&&/^PP/i.test(s))(pin[k]=pin[k]||[]).push(s.toUpperCase());return k}).filter(k=>k!==undefined))];
@@ -688,7 +690,7 @@ function renderPlacement(){
   <div class="bar2">${radio('pmode',[['auto','Auto','Fresh where the store does not carry the SKU, replen where it does'],['fresh','Fresh','Only stores that do not carry the SKU: 2 prepacks or one 12-unit size set'],['replen','Replen','Only stores that carry the SKU: whole prepacks or the sizes needed to make it full']],PMODE)}
   <select id="pZone"><option value="">All zones</option><option ${z==='NORTH'?'selected':''}>NORTH</option><option ${z==='SOUTH'?'selected':''}>SOUTH</option></select>
   <select id="pClus"><option value="">All clusters</option>${[...new Set(S.map(s=>s[6]))].sort().map(x=>`<option ${x===c?'selected':''}>${esc(x)}</option>`).join('')}</select>
-  <label title="After every store has taken its normal share, send ALL remaining WH stock of these SKUs (prepacks first, then loose) to the best stores in scope, ignoring the fill ceiling. Pack rules and the DOI cap still apply. Lines are tagged EXHAUST_PASS in the download"><input type="checkbox" id="pExh" ${PEXH?'checked':''}> Exhaust stock</label>
+  <label title="After every store has taken its normal share, send the remaining WH stock of these SKUs to the best stores in scope, ignoring the fill ceiling. Prepacks = sealed packs only (loose stays in the WH); All = prepacks first, then loose. Pack rules and the DOI cap still apply. Lines are tagged EXHAUST_PASS in the download">Exhaust stock <select id="pExh"><option value="" ${!PEXH?'selected':''}>None</option><option value="prepacks" ${PEXH==='prepacks'?'selected':''}>Exhaust prepacks</option><option value="all" ${PEXH==='all'?'selected':''}>Exhaust all</option></select></label>
   <button class="b" id="pCsv">Download allocation</button><button class="b p" id="pSave">Save allocation</button></div></div>
   <div class="basket" style="margin:8px 0"><b>SKUs in this allocation:</b>${BASKET.length?BASKET.map(s=>`<span class="item"><a href="#" onclick="${/^PP/i.test(s)?`doSearch('${s}')`:`showSku('${s}')`};return false">${s}</a><button title="Remove" onclick="basketToggle('${s}')">×</button></span>`).join('')+
    `<a href="#" onclick="BASKET=[];LS.set('tw_basket',[]);FAMV?showSku(K[CUR][0],true,null,FAMV):(renderPlacement(),document.getElementById('addAlloc').outerHTML=addBtn(CUR),wireAdd());return false" class="mut">clear all</a>`
@@ -697,9 +699,9 @@ function renderPlacement(){
   <div id="pSum"></div><div class="scroll" id="pTbl"></div>`;
  wireRadio(el,'pmode',v=>{PMODE=v;renderPlacement()});
  ['pZone','pClus'].forEach(id=>document.getElementById(id).onchange=renderPlacement);
- document.getElementById('pExh').onchange=e=>{PEXH=e.target.checked;renderPlacement()};
+ document.getElementById('pExh').onchange=e=>{PEXH=e.target.value;renderPlacement()};
  const sts=[];for(let si=0;si<NS;si++)if((!z||S[si][5]===z)&&(!c||S[si][6]===c))sts.push(si);
- const out=allocate(ks,sts,PMODE,cfgNow(),weights(),{pin,exhaust:PEXH});
+ const out=allocate(ks,sts,PMODE,cfgNow(),weights(),{pin,exhaust:PEXH||false});
  const units=sum(out.map(r=>r.units)),byS={};out.forEach(r=>{byS[r.k]=(byS[r.k]||0)+r.units});
  const noStock=ks.filter(k=>sum(K[k][20])+sum(K[k][21])+K[k][43]+K[k][44]===0);
  document.getElementById('pSum').innerHTML=`<div class="kpi"><div><b>${f0(units)}</b><span>units allocated</span></div><div><b>${new Set(out.map(r=>r.si)).size}</b><span>stores</span></div>
@@ -707,7 +709,7 @@ function renderPlacement(){
   <div><b>${f0(sum(out.map(r=>r.sold)))}</b><span>expected sales in ${D.alloc.days_cover}d</span></div>
   ${ks.map(k=>`<div><b>${f0(byS[k]||0)}</b><span>${K[k][0]}</span></div>`).join('')}</div>
   ${ruleNote(out)}
-  ${PEXH&&out.some(r=>r.exhaust)?`<div class="hint" style="margin-top:6px">Exhaust stock: ${f0(sum(out.filter(r=>r.exhaust).map(r=>r.units)))} units in ${out.filter(r=>r.exhaust).length} extra lines beyond the fill ceiling (tagged "exhaust").</div>`:''}
+  ${PEXH&&out.some(r=>r.exhaust)?`<div class="hint" style="margin-top:6px">Exhaust ${PEXH==='prepacks'?'prepacks':'stock'}: ${f0(sum(out.filter(r=>r.exhaust).map(r=>r.units)))} units in ${out.filter(r=>r.exhaust).length} extra lines beyond the fill ceiling (tagged "exhaust").</div>`:''}
   ${noStock.length?`<div class="warn" style="margin-top:6px">No WH stock (loose or prepack): ${noStock.map(k=>K[k][0]).join(', ')}.</div>`:''}
   ${!out.length?'<div class="warn" style="margin-top:6px">Nothing allocated: no WH stock, no projected demand, every store is full (fill ceiling) or no store matches the mode / filters.</div>':''}`;
  document.getElementById('pTbl').innerHTML=out.length?allocTable(out):'';sortable(document.getElementById('pTbl'));
@@ -717,7 +719,7 @@ function renderPlacement(){
 
 // ---------------------------------------------------------------- TAB 2 filters
 const F={zone:'',poc:'',cluster:'',type:'',cat:'',band:'',age:'',stores:new Set()};
-let DCAT=0,MBENCH='ideal',DSI=null;     // DSI: store whose detail is open (null = auto when exactly one store is filtered, -1 = closed)
+let DCAT=0,MBENCH='sales',DSI=null;   // metafield gaps vs weighted sales share by default;     // DSI: store whose detail is open (null = auto when exactly one store is filtered, -1 = closed)
 const uniq=i=>[...new Set(S.map(s=>s[i]))].filter(Boolean).sort();
 function msHtml(){const opts=S.map((s,i)=>[i,s[1]]).sort((p,q)=>p[1].localeCompare(q[1]));
  return `<div class="ms" id="msStores"><button class="b" id="msBtn">Stores: all</button><div class="dd"><input id="msQ" placeholder="search store" style="width:100%;margin-bottom:4px">
