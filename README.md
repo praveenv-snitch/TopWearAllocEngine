@@ -85,3 +85,10 @@ Dev shortcuts: `TW_DEV_DATA=.cache/dev/data.pkl` pickles and reuses the Snowflak
 | Refresh job slow every day | The `embeddings-cache` release is missing or was deleted; the next run rebuilds it |
 | Many `image fetch failures` | Shopify CDN throttling; the next run retries the missing SKUs automatically |
 | Site says "not published yet" | Worker is up but the data job hasn't run yet; run the workflow |
+
+## Saved allocations and store rules
+"Save allocation" stores a finalised allocation for 35 days (Worker + KV). The **Saved allocations** tab lists them
+(search, re-download, delete) and analyses actual sales since the allocation date against the engine's projection for the
+same days (updated with every refresh). A remark on a line becomes a **store rule** (e.g. "Half Sleeve doesn't work here")
+that every later allocation follows. The build mirrors both into `SNITCH_DB.MAPLEMONK.TW_ALLOC_LOG` / `TW_ALLOC_RULES`;
+the CI Snowflake role needs CREATE TABLE on MAPLEMONK for that (otherwise it still works, without the tables).
